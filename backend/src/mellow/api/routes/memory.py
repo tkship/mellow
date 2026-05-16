@@ -16,7 +16,8 @@ async def get_emotions(
     container: Container = Depends(get_container),
 ):
     """获取角色记忆中的情绪轨迹。"""
-    memory = await container.memory_manager.get_or_create(persona_id, user.id)
+    mm = await container.memory_manager()
+    memory = await mm.get_or_create(persona_id, user.id)
     return {
         "emotions": [m.model_dump() for m in memory.emotional_trajectory[-10:]],
     }
@@ -29,7 +30,8 @@ async def get_facts(
     container: Container = Depends(get_container),
 ):
     """获取角色对用户的关键认知。"""
-    memory = await container.memory_manager.get_or_create(persona_id, user.id)
+    mm = await container.memory_manager()
+    memory = await mm.get_or_create(persona_id, user.id)
     return {"facts": memory.key_facts}
 
 
@@ -40,5 +42,6 @@ async def get_summary(
     container: Container = Depends(get_container),
 ):
     """获取角色记忆摘要。"""
-    context = await container.memory_manager.get_memory_context(persona_id, user.id)
+    mm = await container.memory_manager()
+    context = await mm.get_memory_context(persona_id, user.id)
     return {"summary": context}

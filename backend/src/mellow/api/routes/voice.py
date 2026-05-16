@@ -35,13 +35,15 @@ async def voice_stream(
     try:
         # 验证 token
         try:
-            user = await container.auth.verify_token(token)
+            auth = await container.auth()
+            user = await auth.verify_token(token)
         except Exception:
             await websocket.send_json({"type": "error", "message": "认证失败"})
             await websocket.close()
             return
 
-        persona = container.persona_manager.get_persona(persona_id)
+        pm = await container.persona_manager()
+        persona = pm.get_persona(persona_id)
 
         while True:
             # 接收音频数据
@@ -62,10 +64,11 @@ async def voice_stream(
             context = AgentContext(
                 user_id=user.id,
                 persona_name=persona.name if persona else "Mellow",
-                system_prompt=container.persona_manager.render_system_prompt(persona, user.username)
+                system_prompt=pm.render_system_prompt(persona, user.username)
                 if persona else "",
             )
-            result = await container.agent.run(text, context)
+            agent = await container.agent()
+            result = await agent.run(text, context)
 
             # TTS 合成
             # audio = await container.tts.synthesize(result.content, voice=persona.voice_id)

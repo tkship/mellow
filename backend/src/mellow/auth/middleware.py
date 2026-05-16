@@ -18,23 +18,31 @@ async def get_auth_provider(
     container: Container = Depends(get_container),
 ) -> JWTAuthProvider:
     """获取认证提供者实例。"""
-    return container._lazy("auth", lambda: JWTAuthProvider(container.settings))
+    return await container.auth()
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     auth: JWTAuthProvider = Depends(get_auth_provider),
 ) -> UserInfo:
-    """从请求头中提取 JWT Token 并返回当前用户。
+    """从请求中提取 JWT Token 并返回当前用户。
+
+    优先级：Authorization Header > query param `token`（SSE/WebSocket 用）
 
     Raises:
         AuthenticationError: Token 缺失或无效。
     """
-    if credentials is None:
-        # 尝试从 query string 获取（WebSocket/Sse）
-        raise AuthenticationError("未提供认证 Token")
+    # 优先 Bearer header
+    if credentials is not None:
+        return await auth.verify_token(credentials.credentials)
 
-    return await auth.verify_token(credentials.credentials)
+    # 降级：query string token（浏览器 SSE EventSource 不支持自定义 header）
+    token = request.query_params.get("token")
+    if token:
+        return await auth.verify_token(token)
+
+    raise AuthenticationError("未提供认证 Token")
 
 
 async def get_optional_user(

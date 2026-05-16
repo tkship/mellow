@@ -1,15 +1,17 @@
 """JWT 认证实现。
 
-基于 python-jose + passlib，完全自建、无外部依赖。
+基于 python-jose + hashlib，完全自建。
 """
 
+import asyncio
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from mellow.config import Settings, get_settings
-from mellow.exceptions import AuthenticationError
+from mellow.exceptions import AuthenticationError, ConflictError
 from mellow.providers.auth import AuthProvider, TokenPair, UserInfo
 
 
@@ -27,15 +29,29 @@ class JWTAuthProvider(AuthProvider):
     ):
         self._settings = settings or get_settings()
         self._user_repo = user_repo
-        self._pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         # 开发阶段内存存储
         self._users: dict[str, dict] = {}
+        # 保护 _users 并发访问
+        self._lock = asyncio.Lock()
+        # PBKDF2 迭代次数
+        self._hash_iterations = 600_000
 
     def _hash_password(self, password: str) -> str:
-        return self._pwd_context.hash(password)
+        """使用 PBKDF2-SHA256 哈希密码。"""
+        salt = secrets.token_hex(16)
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), self._hash_iterations)
+        return f"pbkdf2:sha256:{self._hash_iterations}${salt}${dk.hex()}"
 
     def _verify_password(self, plain: str, hashed: str) -> bool:
-        return self._pwd_context.verify(plain, hashed)
+        """验证 PBKDF2-SHA256 密码哈希。"""
+        try:
+            # hash 格式: pbkdf2:sha256:{iterations}${salt}${stored}
+            _, _, tail = hashed.split(":", 2)
+            iterations_str, salt, stored = tail.split("$", 2)
+            dk = hashlib.pbkdf2_hmac("sha256", plain.encode(), salt.encode(), int(iterations_str))
+            return secrets.compare_digest(dk.hex(), stored)
+        except (ValueError, AttributeError):
+            return False
 
     def _create_token(self, user_id: str, username: str) -> TokenPair:
         now = datetime.now(timezone.utc)
@@ -87,18 +103,24 @@ class JWTAuthProvider(AuthProvider):
 
     async def register(self, username: str, password: str) -> UserInfo:
         username = username.lower().strip()
-        if username in self._users:
-            raise AuthenticationError("用户名已存在")
 
-        import uuid
+        # 密码哈希是 CPU 密集型操作，在锁外执行
+        password_hash = self._hash_password(password)
 
-        user_id = str(uuid.uuid4())
-        self._users[username] = {
-            "id": user_id,
-            "username": username,
-            "password_hash": self._hash_password(password),
-            "is_active": True,
-        }
+        async with self._lock:
+            if username in self._users:
+                raise ConflictError("用户名已存在")
+
+            import uuid
+
+            user_id = str(uuid.uuid4())
+            self._users[username] = {
+                "id": user_id,
+                "username": username,
+                "password_hash": password_hash,
+                "is_active": True,
+            }
+
         return UserInfo(id=user_id, username=username)
 
     async def login(self, username: str, password: str) -> TokenPair:

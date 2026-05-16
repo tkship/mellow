@@ -1,7 +1,8 @@
 /// API 配置 —— 后端地址。
 class ApiConfig {
   // 开发环境默认地址
-  static const String baseUrl = 'http://10.0.2.2:8000'; // Android 模拟器
+  static const String baseUrl = 'http://localhost:9000'; // 本地后端
+  // static const String baseUrl = 'http://10.0.2.2:8000'; // Android 模拟器
   // static const String baseUrl = 'http://localhost:8000'; // iOS 模拟器
 
   static const String apiPrefix = '/api/v1';

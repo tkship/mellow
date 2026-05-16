@@ -51,6 +51,21 @@ class ReflectAgent(BaseAgent):
             max_tokens=1024,
         )
 
+        # Log mistake for learning tracking
+        try:
+            from mellow.di import Container
+            from mellow.memory.models import MistakeEntry
+            pm = await Container.instance().profile_manager()
+            entry = MistakeEntry(
+                word_or_rule=user_input[:50],
+                mistake_type=response[:30] if len(response) > 30 else response,
+                correction=response[:100],
+                context=f"用户输入: {user_input[:100]}",
+            )
+            await pm.log_mistake(context.user_id, entry)
+        except Exception:
+            pass  # Best effort — don't break correction flow
+
         return AgentResponse(
             content=response,
             intent="reflect",

@@ -1,5 +1,6 @@
 """依赖注入容器 —— 管理所有 Provider 和 Service 的生命周期。"""
 
+import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -17,6 +18,7 @@ class Container:
     def __init__(self, settings: Settings | None = None):
         self._settings = settings or get_settings()
         self._cache: dict[str, Any] = {}
+        self._lock = asyncio.Lock()
 
     @classmethod
     def instance(cls) -> "Container":
@@ -28,33 +30,46 @@ class Container:
     def settings(self) -> Settings:
         return self._settings
 
-    def _lazy(self, key: str, factory):
-        """惰性初始化并缓存实例。"""
-        if key not in self._cache:
-            self._cache[key] = factory()
-        return self._cache[key]
+    async def _lazy(self, key: str, factory):
+        """惰性初始化并缓存实例。
+
+        使用 asyncio.Lock 保护临界区，防止并发初始化导致资源泄漏。
+        """
+        if key in self._cache:
+            return self._cache[key]
+        async with self._lock:
+            if key in self._cache:
+                return self._cache[key]
+            result = factory()
+            if asyncio.iscoroutine(result):
+                result = await result
+            self._cache[key] = result
+            return result
 
     # ---- LLM ----
-    @property
-    def llm(self):
+    async def llm(self):
         from mellow.llm.client import OpenAIProvider
-        return self._lazy("llm", lambda: OpenAIProvider(self._settings))
+        return await self._lazy("llm", lambda: OpenAIProvider(self._settings))
 
-    @property
-    def llm_router(self):
+    async def llm_router(self):
         from mellow.llm.router import LLMRouter
-        return self._lazy("llm_router", lambda: LLMRouter(self._settings, self.llm))
+
+        async def _factory():
+            # 直接创建依赖以避免在持有锁时通过 _lazy 递归获取 llm
+            from mellow.llm.client import OpenAIProvider
+            llm = OpenAIProvider(self._settings)
+            return LLMRouter(self._settings, llm)
+
+        return await self._lazy("llm_router", _factory)
 
     # ---- Knowledge ----
-    @property
-    def knowledge(self):
+    async def knowledge(self):
         from mellow.knowledge.implementations.open_english_dict import OpenEnglishDictProvider
-        return self._lazy("knowledge", lambda: OpenEnglishDictProvider())
+        return await self._lazy("knowledge", lambda: OpenEnglishDictProvider())
 
     # ---- Embedding ----
-    @property
-    def embedding(self):
-        return self._lazy("embedding", self._create_embedding)
+    async def embedding(self):
+        return await self._lazy("embedding", self._create_embedding)
 
     def _create_embedding(self):
         provider_name = self._settings.embed_provider
@@ -68,52 +83,51 @@ class Container:
             raise ValueError(f"不支持的 Embedding 提供商: {provider_name}")
 
     # ---- Auth ----
-    @property
-    def auth(self):
+    async def auth(self):
         from mellow.auth.jwt_auth import JWTAuthProvider
-        return self._lazy("auth", lambda: JWTAuthProvider(self._settings))
+        return await self._lazy("auth", lambda: JWTAuthProvider(self._settings))
 
     # ---- Agent ----
-    @property
-    def agent(self):
-        return self._lazy("agent", self._create_agent)
+    async def agent(self):
+        return await self._lazy("agent", self._create_agent)
 
-    def _create_agent(self):
+    async def _create_agent(self):
         from mellow.agent.orchestrator import OrchestratorAgent
         from mellow.agent.chat_agent import ChatAgent
         from mellow.agent.teach_agent import TeachAgent
         from mellow.agent.reflect_agent import ReflectAgent
+        from mellow.llm.router import LLMRouter
+        from mellow.llm.client import OpenAIProvider
 
-        orchestrator = OrchestratorAgent(self.llm_router)
+        # 直接创建依赖以避免在持有锁时通过 _lazy 递归获取
+        llm = OpenAIProvider(self._settings)
+        llm_router = LLMRouter(self._settings, llm)
+
+        orchestrator = OrchestratorAgent(llm_router)
         orchestrator._set_agents(
-            chat_agent=ChatAgent(self.llm),
-            teach_agent=TeachAgent(self.llm),
-            reflect_agent=ReflectAgent(self.llm),
+            chat_agent=ChatAgent(llm),
+            teach_agent=TeachAgent(llm),
+            reflect_agent=ReflectAgent(llm),
         )
         return orchestrator
 
     # ---- Persona ----
-    @property
-    def persona_manager(self):
+    async def persona_manager(self):
         from mellow.persona.manager import PersonaManager
-        return self._lazy("persona_manager", lambda: PersonaManager(self._settings))
+        return await self._lazy("persona_manager", lambda: PersonaManager(self._settings))
 
     # ---- Memory ----
-    @property
-    def profile_manager(self):
+    async def profile_manager(self):
         from mellow.memory.learning_profile import LearningProfileManager
-        return self._lazy("profile_manager", lambda: LearningProfileManager())
+        return await self._lazy("profile_manager", lambda: LearningProfileManager())
 
-    @property
-    def memory_manager(self):
+    async def memory_manager(self):
         from mellow.memory.persona_memory import PersonaMemoryManager
-        return self._lazy("memory_manager", lambda: PersonaMemoryManager())
+        return await self._lazy("memory_manager", lambda: PersonaMemoryManager())
 
     # ---- Voice (Phase 8) ----
-    # @property
-    # def asr(self): ...
-    # @property
-    # def tts(self): ...
+    # async def asr(self): ...
+    # async def tts(self): ...
 
 
 async def get_container() -> AsyncGenerator[Container, None]:

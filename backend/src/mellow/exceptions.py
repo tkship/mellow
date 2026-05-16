@@ -35,6 +35,13 @@ class NotFoundError(MellowError):
         super().__init__(message, status_code=404)
 
 
+class ConflictError(MellowError):
+    """资源冲突（如重复注册）。"""
+
+    def __init__(self, message: str = "资源已存在"):
+        super().__init__(message, status_code=409)
+
+
 class ValidationError(MellowError):
     """业务校验失败。"""
 

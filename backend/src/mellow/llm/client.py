@@ -1,13 +1,17 @@
 """LLM 客户端抽象层 —— 统一接口 + OpenAI 兼容实现。"""
 
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any
 
-from openai import AsyncOpenAI
+from openai import APIError, AsyncOpenAI
 
 from mellow.config import Settings
+from mellow.exceptions import LLMError
 from mellow.models import Message
+
+logger = logging.getLogger(__name__)
 
 
 class LLMProvider(ABC):
@@ -77,14 +81,21 @@ class OpenAIProvider(LLMProvider):
         max_tokens: int = 2048,
         **kwargs: Any,
     ) -> str:
-        response = await self._client.chat.completions.create(
-            model=model or self._default_model,
-            messages=self._to_openai_messages(messages),
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs,
-        )
-        return response.choices[0].message.content or ""
+        try:
+            response = await self._client.chat.completions.create(
+                model=model or self._default_model,
+                messages=self._to_openai_messages(messages),
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+            return response.choices[0].message.content or ""
+        except APIError as e:
+            logger.error("LLM API call failed: %s", e)
+            raise LLMError(
+                message="AI 服务暂时不可用，请稍后重试。",
+                detail={"provider_error": str(e)},
+            ) from e
 
     async def chat_stream(
         self,
@@ -94,15 +105,22 @@ class OpenAIProvider(LLMProvider):
         max_tokens: int = 2048,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        stream = await self._client.chat.completions.create(
-            model=model or self._default_model,
-            messages=self._to_openai_messages(messages),
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True,
-            **kwargs,
-        )
-        async for chunk in stream:
-            delta = chunk.choices[0].delta
-            if delta.content:
-                yield delta.content
+        try:
+            stream = await self._client.chat.completions.create(
+                model=model or self._default_model,
+                messages=self._to_openai_messages(messages),
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,
+                **kwargs,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    yield delta.content
+        except APIError as e:
+            logger.error("LLM stream call failed: %s", e)
+            raise LLMError(
+                message="AI 服务暂时不可用，请稍后重试。",
+                detail={"provider_error": str(e)},
+            ) from e

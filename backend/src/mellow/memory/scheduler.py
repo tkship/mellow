@@ -5,9 +5,12 @@
 """
 
 import asyncio
+import logging
 
 from mellow.di import Container
 from mellow.memory.proactive import ProactiveMessenger
+
+logger = logging.getLogger(__name__)
 
 
 class ProactiveScheduler:
@@ -18,11 +21,13 @@ class ProactiveScheduler:
 
     def __init__(self, container: Container):
         self._container = container
-        self._messenger = ProactiveMessenger(container.llm)
+        self._messenger: ProactiveMessenger | None = None
         self._task: asyncio.Task | None = None
 
     async def start(self):
         """启动后台检查循环。"""
+        llm = await self._container.llm()
+        self._messenger = ProactiveMessenger(llm)
         interval = self._container.settings.proactive_check_interval_minutes * 60
         self._task = asyncio.create_task(self._loop(interval))
 
@@ -31,15 +36,15 @@ class ProactiveScheduler:
             try:
                 await self._check_all_users()
             except Exception:
-                pass  # 单次失败不影响后续
+                logger.exception("ProactiveScheduler check_all_users failed")
             await asyncio.sleep(interval)
 
     async def _check_all_users(self):
         """检查所有用户是否需要主动联系。"""
         # Phase 9: 简化实现 —— 遍历内存中的用户记忆
-        memory_mgr = self._container.memory_manager
-        profile_mgr = self._container.profile_manager
-        persona_mgr = self._container.persona_manager
+        memory_mgr = await self._container.memory_manager()
+        profile_mgr = await self._container.profile_manager()
+        persona_mgr = await self._container.persona_manager()
 
         # 获取所有 (persona_id, user_id) 组合
         for key, memory in memory_mgr._memories.items():

@@ -13,7 +13,8 @@ router = APIRouter(prefix="/api/v1/personas", tags=["personas"])
 @router.get("")
 async def list_presets(container: Container = Depends(get_container)):
     """获取所有预设角色。"""
-    presets = container.persona_manager.list_presets()
+    pm = await container.persona_manager()
+    presets = pm.list_presets()
     return {"personas": [p.model_dump() for p in presets]}
 
 
@@ -23,7 +24,8 @@ async def list_custom(
     container: Container = Depends(get_container),
 ):
     """获取当前用户的自定义角色。"""
-    customs = container.persona_manager.list_custom(user.id)
+    pm = await container.persona_manager()
+    customs = pm.list_custom(user.id)
     return {"personas": [p.model_dump() for p in customs]}
 
 
@@ -33,7 +35,8 @@ async def get_persona(
     container: Container = Depends(get_container),
 ):
     """获取指定角色详情。"""
-    persona = container.persona_manager.get_persona(persona_id)
+    pm = await container.persona_manager()
+    persona = pm.get_persona(persona_id)
     if not persona:
         return {"error": "角色不存在"}, 404
     return persona.model_dump()

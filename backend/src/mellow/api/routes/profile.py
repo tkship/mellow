@@ -15,8 +15,9 @@ async def get_profile(
     container: Container = Depends(get_container),
 ):
     """获取学习画像。"""
-    profile = await container.profile_manager.get_or_create(user.id)
-    summary = await container.profile_manager.get_profile_summary(user.id)
+    pm = await container.profile_manager()
+    profile = await pm.get_or_create(user.id)
+    summary = await pm.get_profile_summary(user.id)
     return {
         "cefr_level": profile.cefr_level,
         "vocabulary_size": profile.vocabulary_size,
@@ -34,5 +35,6 @@ async def get_mistakes(
     container: Container = Depends(get_container),
 ):
     """获取最近错误记录。"""
-    mistakes = await container.profile_manager.get_recent_mistakes(user.id, limit=20)
+    pm = await container.profile_manager()
+    mistakes = await pm.get_recent_mistakes(user.id, limit=20)
     return {"mistakes": [m.model_dump() for m in mistakes]}

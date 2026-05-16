@@ -1,15 +1,32 @@
 """Mellow — 英语教学智能体 API 入口。"""
 
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from mellow.config import get_settings
 from mellow.di import Container
 from mellow.exceptions import MellowError, mellow_exception_handler
 
+logger = logging.getLogger(__name__)
+
 settings = get_settings()
+
+
+async def _general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """捕获所有未被 MellowError 处理的异常，返回统一错误格式。"""
+    logger.exception("Unhandled exception: %s", exc)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "InternalServerError",
+            "message": "服务器内部错误，请稍后重试。",
+            "detail": {"exception": type(exc).__name__} if settings.debug else {},
+        },
+    )
 
 
 @asynccontextmanager
@@ -40,13 +57,16 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # 全局异常处理
+# Starlette 按注册顺序匹配，子类必须排在父类前面。
+# MellowError 是 Exception 的子类，先注册才能被正确捕获。
 app.add_exception_handler(MellowError, mellow_exception_handler)
+app.add_exception_handler(Exception, _general_exception_handler)
 
 # ---- 注册路由 ----
 from mellow.api.routes import auth, chat, persona, knowledge, profile, memory, voice

@@ -5,6 +5,7 @@ GitHub: https://github.com/ImSingee/open-english-dictionary
 字段: word, phonetic, summary (en+zh), definitions (partOfSpeech, definition, examples), synonyms
 """
 
+import asyncio
 import sqlite3
 from pathlib import Path
 
@@ -36,6 +37,10 @@ class OpenEnglishDictProvider(KnowledgeProvider):
             self._conn = sqlite3.connect(str(self._db_path))
             self._conn.row_factory = sqlite3.Row
 
+    async def _execute(self, query: str, params: tuple = ()):
+        """在线程池中执行同步 sqlite3 操作，避免阻塞事件循环。"""
+        return await asyncio.to_thread(lambda: self._conn.execute(query, params))
+
     async def lookup(self, word: str) -> WordEntry | None:
         """精确查词 —— 大小写不敏感。"""
         try:
@@ -43,11 +48,11 @@ class OpenEnglishDictProvider(KnowledgeProvider):
         except FileNotFoundError:
             return None
 
-        cursor = self._conn.execute(
+        cursor = await self._execute(
             "SELECT * FROM entries WHERE word = ? COLLATE NOCASE",
             (word.strip().lower(),),
         )
-        row = cursor.fetchone()
+        row = await asyncio.to_thread(cursor.fetchone)
         if row is None:
             return None
 
@@ -96,12 +101,12 @@ class OpenEnglishDictProvider(KnowledgeProvider):
 
         # 使用 SQL LIKE 作为简易降级搜索
         pattern = f"%{query.strip().lower()}%"
-        cursor = self._conn.execute(
+        cursor = await self._execute(
             "SELECT word, phonetic FROM entries WHERE word LIKE ? OR word LIKE ? LIMIT ?",
             (pattern, f"%{query.strip().lower()}", top_k),
         )
         results = []
-        for row in cursor.fetchall():
+        for row in await asyncio.to_thread(cursor.fetchall):
             entry = await self.lookup(row["word"])
             if entry:
                 results.append(SearchResult(

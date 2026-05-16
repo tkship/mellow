@@ -14,7 +14,8 @@ async def lookup(
     container: Container = Depends(get_container),
 ):
     """精确查词。"""
-    entry = await container.knowledge.lookup(word)
+    kb = await container.knowledge()
+    entry = await kb.lookup(word)
     if not entry:
         return {"error": f"未找到词条: {word}"}, 404
 
@@ -36,7 +37,8 @@ async def search(
     container: Container = Depends(get_container),
 ):
     """语义搜索。"""
-    results = await container.knowledge.search(q, top_k=top_k)
+    kb = await container.knowledge()
+    results = await kb.search(q, top_k=top_k)
     return {
         "query": q,
         "results": [

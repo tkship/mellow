@@ -2,9 +2,10 @@
 
 from fastapi import APIRouter, Depends
 
-from mellow.api.deps import get_auth_provider
+from mellow.api.deps import get_auth_provider, get_current_user
 from mellow.auth.jwt_auth import JWTAuthProvider
 from mellow.auth.models import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse, UserResponse
+from mellow.providers.auth import UserInfo
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -47,8 +48,7 @@ async def refresh(
 
 
 @router.get("/me", response_model=UserResponse)
-async def me():
-    """（占位）获取当前用户。"""
-    from mellow.auth.middleware import get_current_user
-    user = await get_current_user()
+async def me(
+    user: UserInfo = Depends(get_current_user),
+):
     return UserResponse(id=user.id, username=user.username, is_active=user.is_active)

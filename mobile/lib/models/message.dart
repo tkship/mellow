@@ -2,10 +2,10 @@ enum MessageRole { user, assistant, system }
 
 class ChatMessage {
   final String id;
-  final String content;
+  String content;
   final MessageRole role;
   final DateTime timestamp;
-  final bool isStreaming;
+  bool isStreaming;
 
   ChatMessage({
     required this.id,

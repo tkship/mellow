@@ -69,6 +69,22 @@ class TeachAgent(BaseAgent):
             max_tokens=2048,
         )
 
+        # Record vocabulary exposure for learning tracking
+        try:
+            import json as _json, re as _re
+            json_match = _re.search(r'\{.*"vocabulary".*\}', response, _re.DOTALL)
+            if json_match:
+                plan_data = _json.loads(json_match.group())
+                words: list[str] = plan_data.get("plan", {}).get("vocabulary", []) or []
+                for day in plan_data.get("plan", {}).get("days", []):
+                    words.extend(day.get("vocabulary", []))
+                for word in set(words):
+                    from mellow.di import Container
+                    pm = await Container.instance().profile_manager()
+                    await pm.record_word_mastery(context.user_id, word, 0.3)
+        except Exception:
+            pass  # Best effort — don't break teaching flow
+
         return AgentResponse(
             content=response,
             intent="teach",

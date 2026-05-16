@@ -34,7 +34,8 @@ class Settings(BaseSettings):
     embed_provider: str = "dashscope"
     embed_api_key: str = ""
     embed_model: str = "text-embedding-v4"
-    embed_dimension: int = 1024
+    # 0 = auto-detect from provider (SiliconFlow: 2560, DashScope: 1024)
+    embed_dimension: int = 0
 
     # ---- JWT ----
     jwt_secret: str = "change-me"

@@ -4,6 +4,7 @@
     用户输入 → 意图识别 (LLM) → 路由到子 Agent → 聚合响应
 """
 
+import asyncio
 import json
 import re
 from collections.abc import AsyncIterator
@@ -88,7 +89,7 @@ class OrchestratorAgent(BaseAgent):
             # 直接查知识库，不走子 Agent
             from mellow.di import Container
             container = Container.instance()
-            kb = container.knowledge
+            kb = await container.knowledge()
 
             # 提取可能的关键词
             words = user_input.strip().split()
@@ -123,17 +124,21 @@ class OrchestratorAgent(BaseAgent):
         context: AgentContext,
         history: list[Message] | None = None,
     ) -> AsyncIterator[str]:
-        intent_result = await self._classify_intent(user_input, history)
-        intent = intent_result.get("intent", "chat")
+        try:
+            intent_result = await self._classify_intent(user_input, history)
+            intent = intent_result.get("intent", "chat")
 
-        if intent == "teach" and self._teach_agent:
-            async for token in self._teach_agent.run_stream(user_input, context, history):
-                yield token
-        elif self._chat_agent:
-            async for token in self._chat_agent.run_stream(user_input, context, history):
-                yield token
-        elif self._reflect_agent:
-            async for token in self._reflect_agent.run_stream(user_input, context, history):
-                yield token
-        else:
-            yield "系统尚未就绪。"
+            if intent == "teach" and self._teach_agent:
+                async for token in self._teach_agent.run_stream(user_input, context, history):
+                    yield token
+            elif intent == "reflect" and self._reflect_agent:
+                async for token in self._reflect_agent.run_stream(user_input, context, history):
+                    yield token
+            elif self._chat_agent:
+                async for token in self._chat_agent.run_stream(user_input, context, history):
+                    yield token
+            else:
+                yield "系统尚未就绪。"
+        except asyncio.CancelledError:
+            # Client disconnected — cancellation propagates to sub-agents
+            raise

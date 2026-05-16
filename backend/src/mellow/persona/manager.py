@@ -5,11 +5,21 @@
 
 import json
 import uuid
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 from mellow.config import Settings, get_settings
 from mellow.models import LanguageStyle, Persona, TeachingStyle
+
+
+class SafeDict(dict):
+    """字典子类：缺失的键返回 {key} 占位符，而非抛出 KeyError。
+    
+    用于 str.format_map() 安全渲染包含未知变量的模板字符串。
+    """
+    def __missing__(self, key: str) -> str:
+        return f"{{{key}}}"
 
 
 class PersonaManager:
@@ -125,7 +135,7 @@ class PersonaManager:
             # 使用默认模板
             template = self._default_template()
 
-        return template.format(
+        safe_kwargs = SafeDict(
             name=persona.name,
             role=persona.role,
             user_name=user_name,
@@ -137,6 +147,7 @@ class PersonaManager:
             profile_summary=profile_summary or "新用户",
             memory_context=memory_context or "无历史记录",
         )
+        return template.format_map(safe_kwargs)
 
     def _default_template(self) -> str:
         return """你是一个名为 {name} 的{role}，正在帮助 {user_name} 学习英语。
