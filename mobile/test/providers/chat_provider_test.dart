@@ -124,6 +124,12 @@ void main() {
       ).thenAnswer((_) => _fakeSseStream([
             {'done': true},
           ]));
+      when(
+        () => mockApiClient.toggleMessageFavorite(
+          any(named: 'messageId'),
+          any(named: 'personaId'),
+        ),
+      ).thenAnswer((_) async => {});
 
       await notifier.sendMessage(personaId: 'p1', content: 'Fav test');
 
@@ -133,14 +139,14 @@ void main() {
         isFalse,
       );
 
-      notifier.toggleFavorite(msgId);
+      await notifier.toggleFavorite(msgId, 'p1');
 
       expect(
         notifier.state.messages.firstWhere((m) => m.id == msgId).isFavorite,
         isTrue,
       );
 
-      notifier.toggleFavorite(msgId);
+      await notifier.toggleFavorite(msgId, 'p1');
 
       expect(
         notifier.state.messages.firstWhere((m) => m.id == msgId).isFavorite,
@@ -162,6 +168,12 @@ void main() {
       ).thenAnswer((_) => _fakeSseStream([
             {'done': true},
           ]));
+      when(
+        () => mockApiClient.deleteMessage(
+          any(named: 'messageId'),
+          any(named: 'personaId'),
+        ),
+      ).thenAnswer((_) async => {});
 
       await notifier.sendMessage(personaId: 'p1', content: 'Delete me');
 
@@ -169,7 +181,7 @@ void main() {
           notifier.state.messages.firstWhere((m) => m.role == MessageRole.user);
       final initialCount = notifier.state.messages.length;
 
-      notifier.deleteMessage(userMsg.id);
+      await notifier.deleteMessage(userMsg.id, 'p1');
 
       expect(notifier.state.messages.length, initialCount - 1);
       expect(

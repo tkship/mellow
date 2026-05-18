@@ -4,12 +4,13 @@ import asyncio
 import json
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from mellow.api.deps import get_container, get_current_user
 from mellow.di import Container
+from mellow.exceptions import NotFoundError
 from mellow.memory.session_context import ChatMessage, SessionContextManager
 from mellow.providers.auth import UserInfo
 
@@ -243,16 +244,16 @@ async def toggle_message_favorite(
     """切换消息收藏状态。"""
     sctx = _get_user_persona_context(user.id, persona_id)
     if not sctx:
-        raise HTTPException(status_code=404, detail="会话不存在")
+        raise NotFoundError("会话不存在")
 
     msg = sctx.toggle_favorite(message_id)
     if not msg:
-        raise HTTPException(status_code=404, detail="消息不存在")
+        raise NotFoundError("消息不存在")
 
     return msg.to_dict()
 
 
-@router.delete("/messages/{message_id}")
+@router.delete("/messages/{message_id}", status_code=204)
 async def delete_message(
     message_id: str,
     persona_id: str = Query(..., description="角色 ID"),
@@ -261,10 +262,10 @@ async def delete_message(
     """删除消息。"""
     sctx = _get_user_persona_context(user.id, persona_id)
     if not sctx:
-        raise HTTPException(status_code=404, detail="会话不存在")
+        raise NotFoundError("会话不存在")
 
     if not sctx.delete_message(message_id):
-        raise HTTPException(status_code=404, detail="消息不存在")
+        raise NotFoundError("消息不存在")
 
     return None
 
