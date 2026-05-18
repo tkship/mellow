@@ -10,13 +10,19 @@ from mellow.providers.auth import UserInfo
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register", response_model=TokenResponse)
 async def register(
     req: RegisterRequest,
     auth: JWTAuthProvider = Depends(get_auth_provider),
 ):
     user = await auth.register(req.username, req.password)
-    return UserResponse(id=user.id, username=user.username, is_active=user.is_active)
+    token = await auth.login(req.username, req.password)
+    return TokenResponse(
+        access_token=token.access_token,
+        refresh_token=token.refresh_token,
+        token_type=token.token_type,
+        expires_in=token.expires_in,
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
