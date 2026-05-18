@@ -1,27 +1,58 @@
-enum MessageRole { user, assistant, system }
+enum MessageRole { user, assistant }
 
-class ChatMessage {
+class Message {
   final String id;
-  String content;
+  final String content;
   final MessageRole role;
   final DateTime timestamp;
-  bool isStreaming;
+  final bool isFavorite;
+  final bool isStreaming;
 
-  ChatMessage({
+  const Message({
     required this.id,
     required this.content,
     required this.role,
-    DateTime? timestamp,
+    required this.timestamp,
+    this.isFavorite = false,
     this.isStreaming = false,
-  }) : timestamp = timestamp ?? DateTime.now();
+  });
 
-  bool get isUser => role == MessageRole.user;
+  factory Message.fromJson(Map<String, dynamic> json) => Message(
+        id: json['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        content: json['content'] as String? ?? '',
+        role: _parseRole(json['role'] as String?),
+        timestamp: json['timestamp'] != null
+            ? DateTime.parse(json['timestamp'] as String)
+            : DateTime.now(),
+        isFavorite: json['is_favorite'] as bool? ?? false,
+      );
 
-  ChatMessage copyWith({String? content, bool? isStreaming}) => ChatMessage(
-        id: id,
+  static MessageRole _parseRole(String? role) {
+    return role == 'assistant' ? MessageRole.assistant : MessageRole.user;
+  }
+
+  Message copyWith({
+    String? id,
+    String? content,
+    MessageRole? role,
+    DateTime? timestamp,
+    bool? isFavorite,
+    bool? isStreaming,
+  }) =>
+      Message(
+        id: id ?? this.id,
         content: content ?? this.content,
-        role: role,
-        timestamp: timestamp,
+        role: role ?? this.role,
+        timestamp: timestamp ?? this.timestamp,
+        isFavorite: isFavorite ?? this.isFavorite,
         isStreaming: isStreaming ?? this.isStreaming,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'content': content,
+        'role': role == MessageRole.assistant ? 'assistant' : 'user',
+        'timestamp': timestamp.toIso8601String(),
+        'is_favorite': isFavorite,
+      };
 }

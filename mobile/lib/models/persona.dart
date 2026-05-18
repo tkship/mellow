@@ -1,13 +1,80 @@
+class Persona {
+  final String id;
+  final String name;
+  final String role;
+  final String? roleEmoji;
+  final LanguageStyle languageStyle;
+  final TeachingStyle teachingStyle;
+  final String? intimacyLevel;
+  final List<int>? interactionRhythm;
+  final double? emotionalSensitivity;
+  final String? systemPromptTemplate;
+  final bool isPreset;
+  final String? createdBy;
+  final String? voiceId;
+
+  const Persona({
+    required this.id,
+    required this.name,
+    required this.role,
+    this.roleEmoji,
+    required this.languageStyle,
+    required this.teachingStyle,
+    this.intimacyLevel,
+    this.interactionRhythm,
+    this.emotionalSensitivity,
+    this.systemPromptTemplate,
+    required this.isPreset,
+    this.createdBy,
+    this.voiceId,
+  });
+
+  factory Persona.fromJson(Map<String, dynamic> json) {
+    return Persona(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      role: json['role'] as String,
+      roleEmoji: json['role_emoji'] as String?,
+      languageStyle: LanguageStyle.fromJson(
+        json['language_style'] as Map<String, dynamic>,
+      ),
+      teachingStyle: TeachingStyle.fromJson(
+        json['teaching_style'] as Map<String, dynamic>,
+      ),
+      intimacyLevel: json['intimacy_level'] as String?,
+      interactionRhythm:
+          (json['interaction_rhythm'] as List?)?.cast<int>(),
+      emotionalSensitivity: (json['emotional_sensitivity'] as num?)?.toDouble(),
+      systemPromptTemplate: json['system_prompt_template'] as String?,
+      isPreset: json['is_preset'] as bool? ?? false,
+      createdBy: json['created_by'] as String?,
+      voiceId: json['voice_id'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'role': role,
+        'language_style': languageStyle.toJson(),
+        'teaching_style': teachingStyle.toJson(),
+        'is_preset': isPreset,
+        if (voiceId != null) 'voice_id': voiceId,
+      };
+}
+
 class LanguageStyle {
   final String tone;
   final List<String> traits;
 
-  LanguageStyle({this.tone = '', this.traits = const []});
+  const LanguageStyle({required this.tone, required this.traits});
 
   factory LanguageStyle.fromJson(Map<String, dynamic> json) => LanguageStyle(
-        tone: json['tone'] ?? '',
-        traits: List<String>.from(json['traits'] ?? []),
+        tone: json['tone'] as String? ?? '',
+        traits: (json['traits'] as List?)?.cast<String>() ?? [],
       );
+
+  Map<String, dynamic> toJson() => {'tone': tone, 'traits': traits};
 }
 
 class TeachingStyle {
@@ -15,58 +82,21 @@ class TeachingStyle {
   final double strictness;
   final String correctionFrequency;
 
-  TeachingStyle({
-    this.approach = '',
-    this.strictness = 0.5,
-    this.correctionFrequency = 'major_only',
+  const TeachingStyle({
+    required this.approach,
+    required this.strictness,
+    required this.correctionFrequency,
   });
 
   factory TeachingStyle.fromJson(Map<String, dynamic> json) => TeachingStyle(
-        approach: json['approach'] ?? '',
-        strictness: (json['strictness'] ?? 0.5).toDouble(),
-        correctionFrequency: json['correction_frequency'] ?? 'major_only',
-      );
-}
-
-class Persona {
-  final String id;
-  final String name;
-  final String role;
-  final LanguageStyle languageStyle;
-  final TeachingStyle teachingStyle;
-  final String intimacyLevel;
-  final String? voiceId;
-  final bool isPreset;
-
-  Persona({
-    required this.id,
-    required this.name,
-    required this.role,
-    required this.languageStyle,
-    required this.teachingStyle,
-    this.intimacyLevel = 'casual',
-    this.voiceId,
-    this.isPreset = false,
-  });
-
-  factory Persona.fromJson(Map<String, dynamic> json) => Persona(
-        id: json['id'] ?? '',
-        name: json['name'] ?? '',
-        role: json['role'] ?? '',
-        languageStyle: LanguageStyle.fromJson(json['language_style'] ?? {}),
-        teachingStyle: TeachingStyle.fromJson(json['teaching_style'] ?? {}),
-        intimacyLevel: json['intimacy_level'] ?? 'casual',
-        voiceId: json['voice_id'],
-        isPreset: json['is_preset'] ?? false,
+        approach: json['approach'] as String? ?? '',
+        strictness: (json['strictness'] as num?)?.toDouble() ?? 0.5,
+        correctionFrequency: json['correction_frequency'] as String? ?? '',
       );
 
-  String get roleEmoji {
-    switch (role) {
-      case 'girlfriend': return '💕';
-      case 'strict teacher': return '📚';
-      case 'study buddy': return '🤝';
-      case 'humorous friend': return '😄';
-      default: return '🌟';
-    }
-  }
+  Map<String, dynamic> toJson() => {
+        'approach': approach,
+        'strictness': strictness,
+        'correction_frequency': correctionFrequency,
+      };
 }

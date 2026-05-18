@@ -1,6 +1,10 @@
 """角色管理路由。"""
 
+import re
+from pathlib import Path
+
 from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
 
 from mellow.api.deps import get_container, get_current_user
 from mellow.di import Container
@@ -8,6 +12,28 @@ from mellow.models import Persona
 from mellow.providers.auth import UserInfo
 
 router = APIRouter(prefix="/api/v1/personas", tags=["personas"])
+
+# Voice demo MP3 directory — contains fixed preview files per persona
+_VOICE_DEMO_DIR = Path(__file__).parent.parent.parent.parent / "data" / "voice_demos"
+
+
+def _sanitize_filename(name: str) -> str:
+    """Sanitize a string for use as a filename component.
+
+    Only allows alphanumeric characters, underscores, and hyphens.
+    Replaces any other character with underscore.
+    Prevents path traversal by removing path separators.
+    """
+    # Remove any path separators and parent directory references
+    name = name.replace("\\", "_").replace("/", "_")
+    name = name.replace("..", "_")
+    # Allow only safe characters
+    name = re.sub(r'[^a-zA-Z0-9_\-]', '_', name)
+    # Remove consecutive underscores
+    name = re.sub(r'_+', '_', name)
+    # Strip leading/trailing underscores
+    name = name.strip('_')
+    return name or "unknown"
 
 
 @router.get("")
@@ -40,3 +66,43 @@ async def get_persona(
     if not persona:
         return {"error": "角色不存在"}, 404
     return persona.model_dump()
+
+
+@router.get("/{persona_id}/voice")
+async def get_persona_voice(
+    persona_id: str,
+    container: Container = Depends(get_container),
+):
+    """获取角色配音预览 MP3 文件。
+
+    返回固定 MP3 样本文件。文件存放在 backend/data/voice_demos/ 目录下，
+    命名规则为 {persona_id}_demo.mp3。
+    """
+    pm = await container.persona_manager()
+    persona = pm.get_persona(persona_id)
+    if not persona:
+        return {"error": "角色不存在"}, 404
+
+    # Sanitize inputs to prevent path traversal
+    safe_id = _sanitize_filename(persona_id)
+    safe_name = _sanitize_filename(persona.name.lower())
+    mp3_path = _VOICE_DEMO_DIR / f"{safe_id}_demo.mp3"
+    if not mp3_path.exists():
+        mp3_path = _VOICE_DEMO_DIR / f"{safe_name}_demo.mp3"
+
+    if not mp3_path.exists():
+        return {
+            "error": "配音文件不存在",
+            "message": f"File not found: {persona.name} voice demo",
+        }, 404
+
+    # Ensure the resolved path is within _VOICE_DEMO_DIR
+    resolved = mp3_path.resolve()
+    if not str(resolved).startswith(str(_VOICE_DEMO_DIR.resolve())):
+        return {"error": "Invalid file path"}, 400
+
+    return FileResponse(
+        resolved,
+        media_type="audio/mpeg",
+        filename=f"{persona.name}_demo.mp3",
+    )

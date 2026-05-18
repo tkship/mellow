@@ -1,32 +1,87 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/persona.dart';
-import '../services/api_client.dart';
-import '../services/persona_service.dart';
+import '../shared/constants/error_messages.dart';
+import 'auth_provider.dart';
 
-class PersonaProvider extends ChangeNotifier {
-  final ApiClient _client = ApiClient();
-  late final PersonaService _service = PersonaService(_client);
+/// 角色列表状态
+class PersonaState {
+  final List<Persona> personas;
+  final Persona? selected;
+  final bool isLoading;
+  final String? error;
 
-  List<Persona> _presets = [];
-  Persona? _selected;
-  bool _loading = false;
+  const PersonaState({
+    this.personas = const [],
+    this.selected,
+    this.isLoading = false,
+    this.error,
+  });
 
-  List<Persona> get presets => _presets;
-  Persona? get selected => _selected;
+  PersonaState copyWith({
+    List<Persona>? personas,
+    Persona? selected,
+    bool? isLoading,
+    String? error,
+    bool clearError = false,
+    bool clearSelected = false,
+  }) =>
+      PersonaState(
+        personas: personas ?? this.personas,
+        selected: clearSelected ? null : (selected ?? this.selected),
+        isLoading: isLoading ?? this.isLoading,
+        error: clearError ? null : (error ?? this.error),
+      );
+}
 
-  Future<void> loadPresets() async {
-    _loading = true;
-    notifyListeners();
+/// 角色状态管理
+class PersonaNotifier extends Notifier<PersonaState> {
+  @override
+  PersonaState build() => const PersonaState();
+
+  /// 获取角色列表
+  Future<void> fetchPersonas() async {
+    state = state.copyWith(isLoading: true, clearError: true);
     try {
-      _presets = await _service.listPresets();
-    } catch (_) {}
-    _loading = false;
-    notifyListeners();
+      final client = ref.read(apiClientProvider);
+      final res = await client.getPersonas();
+      final data = res.data as Map<String, dynamic>;
+      final personas = (data['personas'] as List?)
+          ?.cast<Map<String, dynamic>>()
+          .map(Persona.fromJson)
+          .toList() ?? [];
+      state = state.copyWith(personas: personas, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: MellowErrors.loadPersonasFailed,
+      );
+    }
   }
 
+  /// 选中角色
   void selectPersona(Persona persona) {
-    _selected = persona;
-    notifyListeners();
+    state = state.copyWith(selected: persona);
+  }
+
+  /// 获取角色详情
+  Future<void> fetchDetail(String id) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final client = ref.read(apiClientProvider);
+      final res = await client.getPersonaDetail(id);
+      final persona = Persona.fromJson(res.data as Map<String, dynamic>);
+      state = state.copyWith(selected: persona, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: MellowErrors.loadPersonaDetailFailed,
+      );
+    }
   }
 }
+
+/// 角色 Provider
+final personaProvider = NotifierProvider<PersonaNotifier, PersonaState>(
+  PersonaNotifier.new,
+);

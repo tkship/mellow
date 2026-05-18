@@ -69,7 +69,7 @@ app.add_exception_handler(MellowError, mellow_exception_handler)
 app.add_exception_handler(Exception, _general_exception_handler)
 
 # ---- 注册路由 ----
-from mellow.api.routes import auth, chat, persona, knowledge, profile, memory, voice
+from mellow.api.routes import auth, chat, persona, knowledge, profile, memory, voice, vocabulary
 
 app.include_router(auth.router)
 app.include_router(chat.router)
@@ -78,6 +78,7 @@ app.include_router(knowledge.router)
 app.include_router(profile.router)
 app.include_router(memory.router)
 app.include_router(voice.router)
+app.include_router(vocabulary.router)
 
 
 @app.get("/health")

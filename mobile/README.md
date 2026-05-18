@@ -1,4 +1,4 @@
-# mellow_app
+# mobile
 
 A new Flutter project.
 

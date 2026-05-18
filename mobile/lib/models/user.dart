@@ -2,33 +2,43 @@ class User {
   final String id;
   final String username;
   final bool isActive;
+  final String? accessToken;
+  final String? refreshToken;
 
-  User({required this.id, required this.username, this.isActive = true});
-
-  factory User.fromJson(Map<String, dynamic> json) => User(
-        id: json['id'] ?? '',
-        username: json['username'] ?? '',
-        isActive: json['is_active'] ?? true,
-      );
-}
-
-class Token {
-  final String accessToken;
-  final String refreshToken;
-  final String tokenType;
-  final int expiresIn;
-
-  Token({
-    required this.accessToken,
-    required this.refreshToken,
-    this.tokenType = 'bearer',
-    required this.expiresIn,
+  const User({
+    required this.id,
+    required this.username,
+    required this.isActive,
+    this.accessToken,
+    this.refreshToken,
   });
 
-  factory Token.fromJson(Map<String, dynamic> json) => Token(
-        accessToken: json['access_token'] ?? '',
-        refreshToken: json['refresh_token'] ?? '',
-        tokenType: json['token_type'] ?? 'bearer',
-        expiresIn: json['expires_in'] ?? 86400,
+  factory User.fromJson(Map<String, dynamic> json) => User(
+        id: json['id'] as String,
+        username: json['username'] as String,
+        isActive: json['is_active'] as bool? ?? true,
+        accessToken: json['access_token'] as String?,
+        refreshToken: json['refresh_token'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'username': username,
+        'is_active': isActive,
+      };
+
+  User copyWith({
+    String? id,
+    String? username,
+    bool? isActive,
+    String? accessToken,
+    String? refreshToken,
+  }) =>
+      User(
+        id: id ?? this.id,
+        username: username ?? this.username,
+        isActive: isActive ?? this.isActive,
+        accessToken: accessToken ?? this.accessToken,
+        refreshToken: refreshToken ?? this.refreshToken,
       );
 }
