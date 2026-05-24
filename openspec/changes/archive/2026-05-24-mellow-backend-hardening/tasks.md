@@ -1,0 +1,22 @@
+## Tasks
+
+- [x] P0-1: SQLite persistence foundation — db package (base.py, engine.py, init_db.py), UserRow ORM, UserRepository
+- [x] P0-2: Learning Profile persistence — LearningProfileRow ORM, ProfileRepository, converter
+- [x] P0-3: Persona Memory persistence — PersonaMemoryRow ORM, PersonaMemoryRepository, converter
+- [x] P0-4: Session Context — keep in-memory LRU cache (by design)
+- [x] P0-5: Vocabulary Book JSON→SQLite — VocabularyEntryRow ORM, SqlAlchemyVocabularyRepository, route rewrite
+- [x] P1: Semantic search — LanceDB + Embedding with SQL LIKE fallback
+- [x] P2-1: Proactive message endpoint — GET /memory/proactive
+- [x] P2-2: Learning plan API — GET/PUT /profile/plan, POST /profile/plan/complete
+- [x] P2-3: CEFR progress tracking — CefrProgressRow ORM, Repository, stats endpoint
+- [x] P2-4: LLM dynamic opening phrases — LLM generation with hard-coded fallback
+- [x] P3-1: ASR Volcano Engine — HTTP API client, graceful degradation
+- [x] P3-2: TTS Volcano Engine — HTTP API client, graceful degradation
+- [x] Fix: Session lifecycle — request-scoped `get_db_session` dependency
+- [x] Fix: Auth Provider stale session — JWTAuthProvider uses session_factory
+- [x] Fix: Scheduler _memories crash — use DB list_all() query
+- [x] Fix: JWT default key — auto-generate random secret + warning
+- [x] Fix: Knowledge endpoints — add auth dependency
+- [x] Fix: Vocabulary unique constraint — UniqueConstraint + IntegrityError handling
+- [x] Fix: SQLite WAL mode — PRAGMA WAL + foreign_keys via event listener
+- [x] All 43 tests passing

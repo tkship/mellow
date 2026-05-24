@@ -1,0 +1,6 @@
+{
+  "name": "Mellow AI",
+  "description": "An interactive language learning platform powered by Mellow AI. Chat with personal guides (Aura, Leo, Dr. Chen) in native styled conversations, track daily statistics, select goals, and interact in simulated voice sessions.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

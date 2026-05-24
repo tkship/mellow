@@ -45,3 +45,21 @@ async def get_summary(
     mm = await container.memory_manager()
     context = await mm.get_memory_context(persona_id, user.id)
     return {"summary": context}
+
+
+@router.get("/proactive")
+async def get_proactive_messages(
+    persona_id: str = Query(...),
+    user: UserInfo = Depends(get_current_user),
+    container: Container = Depends(get_container),
+):
+    """获取角色的主动联系消息并标记已读。
+
+    返回待投递的主动消息列表，获取后自动标记为已投递。
+    """
+    messenger = await container.proactive_messenger()
+    messages = messenger.get_pending(user.id, persona_id)
+    return {
+        "messages": [m.model_dump() for m in messages],
+        "count": len(messages),
+    }

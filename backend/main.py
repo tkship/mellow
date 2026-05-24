@@ -34,9 +34,14 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理。"""
     settings.data_dir.mkdir(parents=True, exist_ok=True)
 
+    # 初始化数据库
+    from mellow.db import init_db
+    container = Container.instance()
+    engine = container._db_engine
+    await init_db(engine)
+
     # 启动主动联系调度器
     from mellow.memory.scheduler import ProactiveScheduler
-    container = Container.instance()
     scheduler = ProactiveScheduler(container)
     await scheduler.start()
 
@@ -44,6 +49,7 @@ async def lifespan(app: FastAPI):
 
     # 关闭
     await scheduler.stop()
+    await engine.dispose()
 
 
 app = FastAPI(

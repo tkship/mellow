@@ -1,9 +1,10 @@
 """JWT 认证实现。
 
 基于 python-jose + hashlib，完全自建。
+用户数据通过 UserRepository 持久化到 SQLite。
+每次操作创建新 session，避免 stale session 问题。
 """
 
-import asyncio
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -11,28 +12,34 @@ from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 
 from mellow.config import Settings, get_settings
+from mellow.db.repos.user_repo import SqlAlchemyUserRepository
 from mellow.exceptions import AuthenticationError, ConflictError
 from mellow.providers.auth import AuthProvider, TokenPair, UserInfo
+
+
+def _default_session_factory():
+    """获取默认 session 工厂（延迟导入，避免循环依赖）。"""
+    from mellow.db.engine import get_session_factory, get_engine
+    settings = get_settings()
+    engine = get_engine(settings)
+    return get_session_factory(engine)
 
 
 class JWTAuthProvider(AuthProvider):
     """JWT 自建认证实现。
 
-    用户数据存储由外部 Repository 注入（Phase 5 接入 SQLite）。
-    Phase 2 提供内存存储用于开发测试。
+    用户数据通过 UserRepository 持久化到 SQLite 数据库。
+    每次操作创建新 session，确保不会出现 stale session 问题。
     """
 
     def __init__(
         self,
         settings: Settings | None = None,
-        user_repo=None,  # Phase 5: UserRepository
+        user_repo=None,
+        session_factory=None,
     ):
         self._settings = settings or get_settings()
-        self._user_repo = user_repo
-        # 开发阶段内存存储
-        self._users: dict[str, dict] = {}
-        # 保护 _users 并发访问
-        self._lock = asyncio.Lock()
+        self._session_factory = session_factory or _default_session_factory
         # PBKDF2 迭代次数
         self._hash_iterations = 600_000
 
@@ -99,54 +106,64 @@ class JWTAuthProvider(AuthProvider):
                 raise AuthenticationError("Token 类型不匹配")
             return payload
         except JWTError as e:
-            raise AuthenticationError(f"Token 无效: {e}")
+            raise AuthenticationError("Token 无效")
 
     async def register(self, username: str, password: str) -> UserInfo:
         username = username.lower().strip()
 
-        # 密码哈希是 CPU 密集型操作，在锁外执行
+        # 密码哈希是 CPU 密集型操作
         password_hash = self._hash_password(password)
 
-        async with self._lock:
-            if username in self._users:
-                raise ConflictError("用户名已存在")
-
-            import uuid
-
-            user_id = str(uuid.uuid4())
-            self._users[username] = {
-                "id": user_id,
-                "username": username,
-                "password_hash": password_hash,
-                "is_active": True,
-            }
-
-        return UserInfo(id=user_id, username=username)
+        session = self._session_factory()
+        try:
+            repo = SqlAlchemyUserRepository(session)
+            user_row = await repo.create(username, password_hash)
+            await session.commit()
+            return user_row.to_user_info()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
     async def login(self, username: str, password: str) -> TokenPair:
         username = username.lower().strip()
-        user = self._users.get(username)
-        if not user:
+        session = self._session_factory()
+        try:
+            repo = SqlAlchemyUserRepository(session)
+            user_row = await repo.get_by_username(username)
+        finally:
+            await session.close()
+        if not user_row:
             raise AuthenticationError("用户名或密码错误")
 
-        if not self._verify_password(password, user["password_hash"]):
+        if not self._verify_password(password, user_row.password_hash):
             raise AuthenticationError("用户名或密码错误")
 
-        return self._create_token(user["id"], user["username"])
+        return self._create_token(user_row.id, user_row.username)
 
     async def verify_token(self, token: str) -> UserInfo:
         payload = self._decode_token(token, "access")
-        username = payload.get("username", "")
-        user = self._users.get(username.lower())
-        if not user:
+        username = payload.get("username", "").lower()
+        session = self._session_factory()
+        try:
+            repo = SqlAlchemyUserRepository(session)
+            user_row = await repo.get_by_username(username)
+        finally:
+            await session.close()
+        if not user_row:
             raise AuthenticationError("用户不存在")
-        return UserInfo(id=user["id"], username=user["username"], is_active=user["is_active"])
+        return user_row.to_user_info()
 
     async def refresh_token(self, refresh_token: str) -> TokenPair:
         payload = self._decode_token(refresh_token, "refresh")
         user_id = payload["sub"]
-        # 查找用户
-        for user in self._users.values():
-            if user["id"] == user_id:
-                return self._create_token(user_id, user["username"])
-        raise AuthenticationError("用户不存在")
+        session = self._session_factory()
+        try:
+            repo = SqlAlchemyUserRepository(session)
+            user_row = await repo.get_by_id(user_id)
+        finally:
+            await session.close()
+        if not user_row:
+            raise AuthenticationError("用户不存在")
+        return self._create_token(user_row.id, user_row.username)

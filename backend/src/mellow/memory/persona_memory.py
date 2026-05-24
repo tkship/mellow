@@ -1,13 +1,16 @@
 """角色记忆管理器 —— 管理 PersonaMemory。
 
-存储策略（混合）：
-- 7 天内原始对话 → LanceDB（向量可检索）
-- 超出 7 天 → 压缩为摘要存入 SQLite
-- 关键事件（情绪转折、学习里程碑）→ 永久保留
+存储策略：SQLite via SQLAlchemy（持久化）。
+Pydantic 模型在校验层使用，ORM 模型在持久化层使用。
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
+from mellow.db.repos.persona_memory_repo import (
+    PersonaMemoryRepository,
+    mem_to_row,
+    row_to_mem,
+)
 from mellow.memory.models import MoodEvent, PersonaMemory
 
 
@@ -15,23 +18,17 @@ class PersonaMemoryManager:
     """角色记忆管理器。
 
     每个 (persona_id, user_id) 组合独立存储。
+    数据通过 PersonaMemoryRepository 持久化到 SQLite。
+    每次 操作 使用传入的 repo 的 session。
     """
 
-    def __init__(self):
-        # Phase 5: 内存存储 → 后续换 SQLite + LanceDB
-        self._memories: dict[str, PersonaMemory] = {}
-
-    def _key(self, persona_id: str, user_id: str) -> str:
-        return f"{persona_id}:{user_id}"
+    def __init__(self, repo: PersonaMemoryRepository, session_factory=None):
+        self._repo = repo
+        self._session_factory = session_factory
 
     async def get_or_create(self, persona_id: str, user_id: str) -> PersonaMemory:
-        key = self._key(persona_id, user_id)
-        if key not in self._memories:
-            self._memories[key] = PersonaMemory(
-                persona_id=persona_id,
-                user_id=user_id,
-            )
-        return self._memories[key]
+        row = await self._repo.get_or_create(persona_id, user_id)
+        return row_to_mem(row)
 
     async def record_interaction(
         self,
@@ -40,16 +37,18 @@ class PersonaMemoryManager:
         summary: str = "",
     ):
         """记录一次互动。"""
-        memory = await self.get_or_create(persona_id, user_id)
+        row = await self._repo.get_or_create(persona_id, user_id)
+        memory = row_to_mem(row)
         memory.last_interaction = datetime.now(timezone.utc)
         memory.interaction_count += 1
         memory.updated_at = datetime.now(timezone.utc)
         if summary:
-            # 简单追加到关系摘要（后续用 LLM 压缩）
             if memory.relationship_summary:
                 memory.relationship_summary += f"\n{summary}"
             else:
                 memory.relationship_summary = summary
+        mem_to_row(memory, row)
+        await self._repo.save(row)
 
     async def record_mood(
         self,
@@ -60,7 +59,8 @@ class PersonaMemoryManager:
         intensity: float = 0.5,
     ):
         """记录情绪事件。"""
-        memory = await self.get_or_create(persona_id, user_id)
+        row = await self._repo.get_or_create(persona_id, user_id)
+        memory = row_to_mem(row)
         event = MoodEvent(
             date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             mood=mood,
@@ -72,15 +72,20 @@ class PersonaMemoryManager:
         if len(memory.emotional_trajectory) > 50:
             memory.emotional_trajectory = memory.emotional_trajectory[-50:]
         memory.updated_at = datetime.now(timezone.utc)
+        mem_to_row(memory, row)
+        await self._repo.save(row)
 
     async def add_key_fact(self, persona_id: str, user_id: str, fact: str):
         """添加角色对用户的关键认知。"""
-        memory = await self.get_or_create(persona_id, user_id)
+        row = await self._repo.get_or_create(persona_id, user_id)
+        memory = row_to_mem(row)
         if fact not in memory.key_facts:
             memory.key_facts.append(fact)
         # 限制 30 条
         if len(memory.key_facts) > 30:
             memory.key_facts = memory.key_facts[-30:]
+        mem_to_row(memory, row)
+        await self._repo.save(row)
 
     async def get_memory_context(self, persona_id: str, user_id: str) -> str:
         """生成角色记忆上下文 —— 供 Agent prompt 使用。"""

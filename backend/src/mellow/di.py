@@ -4,6 +4,8 @@ import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from mellow.config import Settings, get_settings
 
 
@@ -46,6 +48,37 @@ class Container:
             self._cache[key] = result
             return result
 
+    # ---- 数据库 ----
+    @property
+    def _db_engine(self):
+        """惰性创建数据库引擎（同步属性，不缓存到 _cache）。"""
+        from mellow.db.engine import get_engine
+
+        if "_db_engine" not in self.__dict__:
+            self.__dict__["_db_engine_val"] = get_engine(self._settings)
+            self.__dict__["_db_engine"] = True
+        return self.__dict__["_db_engine_val"]
+
+    @property
+    def _session_factory(self) -> async_sessionmaker[AsyncSession]:
+        """惰性创建 session 工厂。"""
+        from mellow.db.engine import get_session_factory
+
+        if "_session_factory" not in self.__dict__:
+            self.__dict__["_session_factory_val"] = get_session_factory(self._db_engine)
+            self.__dict__["_session_factory"] = True
+        return self.__dict__["_session_factory_val"]
+
+    def session(self) -> AsyncSession:
+        """创建一个新的 AsyncSession。"""
+        return self._session_factory()
+
+    def user_repo(self) -> "SqlAlchemyUserRepository":
+        """创建 UserRepository 实例。"""
+        from mellow.db.repos.user_repo import SqlAlchemyUserRepository
+
+        return SqlAlchemyUserRepository(self.session())
+
     # ---- LLM ----
     async def llm(self):
         from mellow.llm.client import OpenAIProvider
@@ -82,10 +115,16 @@ class Container:
         else:
             raise ValueError(f"不支持的 Embedding 提供商: {provider_name}")
 
+    # ---- Vector Store ----
+    async def vector_store(self):
+        from mellow.vector_store.connection import LanceDBConnector
+        connector = LanceDBConnector(self._settings)
+        return await self._lazy("vector_store", lambda: connector)
+
     # ---- Auth ----
     async def auth(self):
         from mellow.auth.jwt_auth import JWTAuthProvider
-        return await self._lazy("auth", lambda: JWTAuthProvider(self._settings))
+        return await self._lazy("auth", lambda: JWTAuthProvider(self._settings, session_factory=self._session_factory))
 
     # ---- Agent ----
     async def agent(self):
@@ -118,16 +157,26 @@ class Container:
 
     # ---- Memory ----
     async def profile_manager(self):
+        from mellow.db.repos.profile_repo import SqlAlchemyLearningProfileRepository
         from mellow.memory.learning_profile import LearningProfileManager
-        return await self._lazy("profile_manager", lambda: LearningProfileManager())
+        repo = SqlAlchemyLearningProfileRepository(self.session())
+        return await self._lazy("profile_manager", lambda: LearningProfileManager(repo))
 
     async def memory_manager(self):
+        from mellow.db.repos.persona_memory_repo import SqlAlchemyPersonaMemoryRepository
         from mellow.memory.persona_memory import PersonaMemoryManager
-        return await self._lazy("memory_manager", lambda: PersonaMemoryManager())
+        repo = SqlAlchemyPersonaMemoryRepository(self.session())
+        return await self._lazy("memory_manager", lambda: PersonaMemoryManager(repo))
 
     # ---- Voice (Phase 8) ----
     # async def asr(self): ...
     # async def tts(self): ...
+
+    # ---- Proactive Messenger ----
+    async def proactive_messenger(self):
+        from mellow.memory.proactive import ProactiveMessenger
+        llm = await self.llm()
+        return await self._lazy("proactive_messenger", lambda: ProactiveMessenger(llm))
 
 
 async def get_container() -> AsyncGenerator[Container, None]:

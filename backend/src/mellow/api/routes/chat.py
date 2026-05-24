@@ -278,15 +278,51 @@ async def get_quick_phrases(
 ) -> dict:
     """获取角色化的动态开场白（快捷短语）。
 
-    根据角色性格和用户画像生成 3-5 条开场白。
+    优先使用 LLM 动态生成，失败时回退到硬编码。
     """
     pm = await container.persona_manager()
     persona = pm.get_persona(persona_id)
 
     if not persona:
-        return {"phrases": []}
+        return {"phrases": [], "persona_name": ""}
 
-    # Base phrases per persona role
+    # 尝试 LLM 动态生成
+    try:
+        from mellow.models import Message, MessageRole
+
+        profile_mgr = await container.profile_manager()
+        profile_summary = await profile_mgr.get_profile_summary(user.id)
+
+        system_msg = Message(
+            role=MessageRole.SYSTEM,
+            content=(
+                f"你是{persona.name}，一个{persona.role}。"
+                f"你的性格：{persona.language_style.tone if hasattr(persona, 'language_style') and persona.language_style else '友好'}。"
+                f"用户{user.username}的学习情况：{profile_summary}。"
+                "生成 3-5 条符合你角色性格的开场白，每条不超过 20 字，"
+                "自然、有趣、适合英语学习场景。"
+                "每条用 JSON 数组格式返回，例如：[\"开场白1\", \"开场白2\", \"开场白3\"]"
+                "只返回 JSON 数组，不要其他内容。"
+            ),
+        )
+
+        llm = await container.llm()
+        result = await llm.chat([system_msg], temperature=0.9, max_tokens=256)
+
+        # 解析 LLM 返回的 JSON 数组
+        import json
+        text = result.strip()
+        # 尝试提取 JSON 数组
+        start = text.find("[")
+        end = text.rfind("]") + 1
+        if start >= 0 and end > start:
+            phrases = json.loads(text[start:end])
+            if isinstance(phrases, list) and len(phrases) >= 2:
+                return {"phrases": phrases[:5], "persona_name": persona.name}
+    except Exception:
+        pass  # LLM 失败，回退到硬编码
+
+    # Fallback: 硬编码开场白
     phrase_map: dict[str, list[str]] = {
         "girlfriend": [
             f"Hey sweetie~ 今天想练什么呢？💕",

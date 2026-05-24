@@ -40,15 +40,27 @@ class ProactiveScheduler:
             await asyncio.sleep(interval)
 
     async def _check_all_users(self):
-        """检查所有用户是否需要主动联系。"""
-        # Phase 9: 简化实现 —— 遍历内存中的用户记忆
+        """检查所有用户是否需要主动联系。
+
+        通过 DB 查询所有有记忆记录的用户，而非遍历内存字典。
+        """
+        from mellow.db.repos.persona_memory_repo import SqlAlchemyPersonaMemoryRepository
+
         memory_mgr = await self._container.memory_manager()
         profile_mgr = await self._container.profile_manager()
         persona_mgr = await self._container.persona_manager()
 
-        # 获取所有 (persona_id, user_id) 组合
-        for key, memory in memory_mgr._memories.items():
-            persona_id, user_id = key.split(":", 1)
+        # 通过 DB 查询所有记忆记录，而非遍历内存字典
+        session = self._container.session()
+        try:
+            repo = SqlAlchemyPersonaMemoryRepository(session)
+            all_memories = await repo.list_all()
+        finally:
+            await session.close()
+
+        for row in all_memories:
+            persona_id = row.persona_id
+            user_id = row.user_id
 
             persona = persona_mgr.get_persona(persona_id)
             if not persona or not persona.interaction_rhythm:
@@ -60,6 +72,10 @@ class ProactiveScheduler:
                 continue
 
             profile_summary = await profile_mgr.get_profile_summary(user_id)
+
+            # 从 DB 行重建 memory 对象
+            from mellow.db.repos.persona_memory_repo import row_to_mem
+            memory = row_to_mem(row)
 
             msg = await self._messenger.check_and_generate(
                 user_id=user_id,

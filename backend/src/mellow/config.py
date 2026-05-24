@@ -38,12 +38,13 @@ class Settings(BaseSettings):
     embed_dimension: int = 0
 
     # ---- JWT ----
-    jwt_secret: str = "change-me"
+    jwt_secret: str = ""  # 必须通过环境变量 JWT_SECRET 配置，无默认值
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440  # 24 小时
 
     # ---- 数据库 ----
     database_url: str = "sqlite+aiosqlite:///./data/mellow.db"
+    database_echo: bool = False
     lancedb_path: str = "./data/lancedb"
 
     # ---- 语音 (火山引擎) ----
@@ -61,6 +62,19 @@ class Settings(BaseSettings):
     def data_dir(self) -> Path:
         """数据目录的绝对路径。"""
         return Path(self.lancedb_path).parent.resolve()
+
+    def model_post_init(self, __context) -> None:
+        """启动时校验关键配置。"""
+        if not self.jwt_secret:
+            import warnings
+            warnings.warn(
+                "JWT_SECRET 未配置！请设置环境变量 JWT_SECRET 或在 .env 中添加。"
+                "使用空密钥运行极不安全，仅适合本地开发。",
+                stacklevel=2,
+            )
+            # 开发模式允许空密钥，但设置为随机值以避免伪造
+            import secrets
+            self.jwt_secret = f"dev-only-{secrets.token_hex(32)}"
 
 
 @lru_cache
