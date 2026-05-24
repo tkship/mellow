@@ -55,8 +55,8 @@ export interface CefrProgressItem {
 }
 
 export interface MistakeEntry {
-  word: string;
-  error_type: string;
+  word_or_rule: string;
+  mistake_type: string;
   correction: string;
   context: string;
   timestamp: string;

@@ -50,6 +50,7 @@ export interface PersonaDisplay {
   description: string;
   tag?: string;
   avatar: string;  // 图片路径或空字符串（空则用首字母）
+  isCustom?: boolean;  // 标记自定义角色
 }
 
 // ===== 聊天相关 =====
@@ -93,6 +94,21 @@ export interface UserProfile {
   learningDays: number;
   streak: number;
   summary: string;
+}
+
+// ===== 学习计划相关 =====
+
+export type { WeeklyPlan, DailyPlan } from './api/profile';
+
+// ===== 主动消息相关 =====
+
+export type { ProactiveMessage } from './api/memory';
+
+// ===== Toast 相关 =====
+
+export interface ToastMessage {
+  text: string;
+  type: 'success' | 'error';
 }
 
 // ===== 应用全局状态 =====

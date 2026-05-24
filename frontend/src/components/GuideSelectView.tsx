@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { PersonaDisplay } from '../types';
+import { getPersonaVoiceUrl } from '../api/persona';
 
 interface GuideSelectViewProps {
   personas: PersonaDisplay[];
@@ -7,6 +8,8 @@ interface GuideSelectViewProps {
   selectedId: string;
   onSelectTutor: (id: string) => void;
   onConfirmSelection: () => void;
+  playingPersonaId: string | null;
+  onPlayVoice: (personaId: string) => void;
 }
 
 export default function GuideSelectView({
@@ -15,6 +18,8 @@ export default function GuideSelectView({
   selectedId,
   onSelectTutor,
   onConfirmSelection,
+  playingPersonaId,
+  onPlayVoice,
 }: GuideSelectViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -22,9 +27,16 @@ export default function GuideSelectView({
   const [viewportWidth, setViewportWidth] = useState(375);
   const [isSwiping, setIsSwiping] = useState(false);
   const startX = useRef(0);
-  const activeIndex = Math.max(0, personas.findIndex((p) => p.id === selectedId));
 
-  // Read client viewport size for highly accurate responsive offsets
+  // Split into preset and custom personas
+  const presetPersonas = personas.filter((p) => !p.isCustom);
+  const customPersonas = personas.filter((p) => p.isCustom);
+
+  // Use ALL personas for carousel, but only preset ones by default
+  const carouselPersonas = presetPersonas.length > 0 ? presetPersonas : personas;
+  const activeIndex = Math.max(0, carouselPersonas.findIndex((p) => p.id === selectedId));
+
+  // Read client viewport size
   useEffect(() => {
     const handleResize = () => {
       if (containerRef.current) {
@@ -52,15 +64,13 @@ export default function GuideSelectView({
     if (!isSwiping) return;
     setIsSwiping(false);
 
-    const swipeThreshold = 55; // Quick responsive trigger distance to cycle roles
+    const swipeThreshold = 55;
     if (dragOffset > swipeThreshold) {
-      // Swiped right -> go to previous persona
-      const prevIdx = (activeIndex - 1 + personas.length) % personas.length;
-      onSelectTutor(personas[prevIdx].id);
+      const prevIdx = (activeIndex - 1 + carouselPersonas.length) % carouselPersonas.length;
+      onSelectTutor(carouselPersonas[prevIdx].id);
     } else if (dragOffset < -swipeThreshold) {
-      // Swiped left -> go to next persona
-      const nextIdx = (activeIndex + 1) % personas.length;
-      onSelectTutor(personas[nextIdx].id);
+      const nextIdx = (activeIndex + 1) % carouselPersonas.length;
+      onSelectTutor(carouselPersonas[nextIdx].id);
     }
     setDragOffset(0);
   };
@@ -68,11 +78,10 @@ export default function GuideSelectView({
   // Click handler to select side cards directly
   const handleSideCardClick = (index: number) => {
     if (index !== activeIndex) {
-      onSelectTutor(personas[index].id);
+      onSelectTutor(carouselPersonas[index].id);
     }
   };
 
-  // Generate a stable color variant for the initial circle based on persona id
   const getInitialCircleClasses = (id: string): string => {
     const colors = [
       'bg-primary/20 text-primary',
@@ -89,17 +98,15 @@ export default function GuideSelectView({
     return colors[Math.abs(hash) % colors.length];
   };
 
-  // Dynamic layout & transformations styling logic
   const getCardTransformAndStyle = (index: number) => {
     let diff = index - activeIndex;
 
-    // Circular wrap for 3 items
-    if (diff > 1) diff -= personas.length;
-    if (diff < -1) diff += personas.length;
+    if (diff > 1) diff -= carouselPersonas.length;
+    if (diff < -1) diff += carouselPersonas.length;
 
     const isMobile = viewportWidth < 640;
     const horizontalSpacing = isMobile ? 75 : 160;
-    const dragRatio = dragOffset / 120; // scale drag effect
+    const dragRatio = dragOffset / 120;
 
     let translateX = 0;
     let translateY = 10;
@@ -110,28 +117,25 @@ export default function GuideSelectView({
     let blurPx = 1.5;
 
     if (diff === 0) {
-      // CENTER CARD - active focused role
-      translateX = dragOffset; // translates 1:1 with drag gesture for highly physical feel
+      translateX = dragOffset;
       translateY = -5;
-      rotation = dragRatio * 6; // active card rotates dynamically with drag direction
+      rotation = dragRatio * 6;
       scale = 1.02 - Math.abs(dragRatio) * 0.08;
       zIndex = 30;
       opacity = 1;
       blurPx = 0;
     } else if (diff === -1) {
-      // LEFT GHOST CARD - fanning out to left background
       translateX = -horizontalSpacing + dragOffset * 0.35;
       translateY = 8;
-      rotation = -6 + dragRatio * 6; // rotates towards center as dragged right
+      rotation = -6 + dragRatio * 6;
       scale = 0.88 + dragRatio * 0.08;
       zIndex = 20;
       opacity = 0.45 + dragRatio * 0.35;
       blurPx = Math.max(0, 1.5 - dragRatio * 1.5);
     } else if (diff === 1) {
-      // RIGHT GHOST CARD - fanning out to right background
       translateX = horizontalSpacing + dragOffset * 0.35;
       translateY = 8;
-      rotation = 6 + dragRatio * 6; // rotates towards center as dragged left
+      rotation = 6 + dragRatio * 6;
       scale = 0.88 - dragRatio * 0.08;
       zIndex = 20;
       opacity = 0.45 - dragRatio * 0.35;
@@ -167,7 +171,7 @@ export default function GuideSelectView({
           </p>
         </div>
 
-        {/* Dynamic Generous Card Deck Interactive Stack Stage */}
+        {/* Dynamic Generous Card Deck */}
         <div
           ref={containerRef}
           className="relative w-full max-w-4xl h-[42vh] min-h-[290px] max-h-[460px] flex items-center justify-center cursor-grab active:cursor-grabbing my-auto"
@@ -179,7 +183,6 @@ export default function GuideSelectView({
           onMouseUp={handleDragEnd}
           onMouseLeave={handleDragEnd}
         >
-          {/* Loading State: skeleton cards with shimmer */}
           {loading && (
             <>
               {[0, 1, 2].map((i) => (
@@ -198,11 +201,9 @@ export default function GuideSelectView({
                     pointerEvents: 'none',
                   }}
                 >
-                  {/* Skeleton avatar area */}
                   <div className="h-[62%] w-full bg-slate-800 flex items-center justify-center animate-pulse">
                     <div className="w-24 h-24 rounded-full bg-slate-700" />
                   </div>
-                  {/* Skeleton text area */}
                   <div className="p-3.5 flex flex-col flex-grow justify-between bg-slate-950 border-t border-white/5 animate-pulse">
                     <div className="flex flex-col gap-2">
                       <div className="h-4 w-28 bg-slate-700 rounded" />
@@ -218,18 +219,17 @@ export default function GuideSelectView({
             </>
           )}
 
-          {/* Empty State: no personas available */}
-          {!loading && personas.length === 0 && (
+          {!loading && carouselPersonas.length === 0 && (
             <div className="text-center py-10">
               <p className="text-on-surface-variant/60 text-sm">暂无可用角色</p>
             </div>
           )}
 
-          {/* Card Carousel: render each persona as an interactive card */}
           {!loading &&
-            personas.map((persona, idx) => {
+            carouselPersonas.map((persona, idx) => {
               const isSelected = selectedId === persona.id;
               const cardInfo = getCardTransformAndStyle(idx);
+              const isPlaying = playingPersonaId === persona.id;
 
               return (
                 <div
@@ -242,16 +242,14 @@ export default function GuideSelectView({
                       : 'border-white/10 bg-slate-900 scale-90 opacity-45 cursor-pointer'
                   }`}
                 >
-                  {/* 1. Avatar Area — image or initial circle */}
+                  {/* Avatar Area */}
                   <div className="relative h-[62%] w-full bg-slate-950 overflow-hidden pointer-events-none shrink-0">
                     {persona.avatar ? (
                       <>
-                        {/* Backdrop Blurred Replication */}
                         <div
                           className="absolute inset-0 bg-cover bg-center filter blur-[15px] scale-125 opacity-35 brightness-75 transition-all duration-500"
                           style={{ backgroundImage: `url(${persona.avatar})` }}
                         />
-                        {/* Character image */}
                         <img
                           alt={persona.name}
                           className="relative z-10 w-full h-full object-cover transition-transform duration-700 select-none animate-fade-in"
@@ -260,7 +258,6 @@ export default function GuideSelectView({
                         />
                       </>
                     ) : (
-                      /* Fallback: Colored initial circle */
                       <div
                         className={`absolute inset-0 z-[5] w-full h-full flex items-center justify-center font-display font-bold text-3xl ${getInitialCircleClasses(persona.id)}`}
                       >
@@ -269,12 +266,11 @@ export default function GuideSelectView({
                         </span>
                       </div>
                     )}
-                    {/* High quality sci-fi overlays */}
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:16px_16px] opacity-20 z-10" />
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/10 to-transparent z-15" />
                   </div>
 
-                  {/* 2. Compact Info text fitted inside the smaller card */}
+                  {/* Info text */}
                   <div className="p-3.5 flex flex-col flex-grow justify-between select-none bg-slate-950 border-t border-white/5">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -294,21 +290,90 @@ export default function GuideSelectView({
                         {persona.tagline}
                       </p>
                     </div>
-                    <p className="text-[9px] md:text-[10px] text-zinc-400 font-sans leading-relaxed line-clamp-2">
-                      {persona.description}
-                    </p>
+
+                    {/* Voice Preview Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPlayVoice(persona.id);
+                      }}
+                      className={`mt-2 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-xl text-[10px] font-semibold transition-all cursor-pointer ${
+                        isPlaying
+                          ? 'bg-primary/20 text-primary border border-primary/30'
+                          : 'bg-white/5 text-zinc-400 border border-white/10 hover:bg-primary/10 hover:text-primary hover:border-primary/30'
+                      }`}
+                    >
+                      <span
+                        className={`material-symbols-outlined text-[14px] ${isPlaying ? 'animate-pulse' : ''}`}
+                        style={{ fontVariationSettings: isPlaying ? "'FILL' 1" : "'FILL' 0" }}
+                      >
+                        {isPlaying ? 'volume_up' : 'volume_up'}
+                      </span>
+                      <span>{isPlaying ? '播放中...' : '试听声音'}</span>
+                    </button>
                   </div>
                 </div>
               );
             })}
         </div>
 
-        {/* Carousel Pagination Bottom Controls block — hidden during loading or when empty */}
-        {!loading && personas.length > 0 && (
+        {/* Custom Personas Section — only show when custom personas exist */}
+        {!loading && customPersonas.length > 0 && (
+          <div className="w-full max-w-xl mx-auto mt-2">
+            <h3 className="font-display font-bold text-sm text-on-surface-variant mb-2 px-2">
+              我的角色
+            </h3>
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
+              {customPersonas.map((persona) => {
+                const isSelected = selectedId === persona.id;
+                const isPlaying = playingPersonaId === persona.id;
+                return (
+                  <button
+                    key={persona.id}
+                    onClick={() => onSelectTutor(persona.id)}
+                    className={`flex-shrink-0 w-28 rounded-2xl overflow-hidden border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'border-primary/60 ring-2 ring-primary/20 bg-white shadow-md'
+                        : 'border-outline-variant/20 bg-white hover:border-primary/30 shadow-sm'
+                    }`}
+                  >
+                    <div className={`h-20 w-full flex items-center justify-center ${getInitialCircleClasses(persona.id)}`}>
+                      <span className="text-2xl font-display font-bold select-none">
+                        {persona.name.charAt(0)}
+                      </span>
+                    </div>
+                    <div className="p-2">
+                      <p className="text-xs font-display font-bold text-on-surface truncate">{persona.name}</p>
+                      <p className="text-[9px] text-on-surface-variant font-sans truncate">{persona.tagline || persona.role}</p>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPlayVoice(persona.id);
+                        }}
+                        className={`mt-1 flex items-center justify-center gap-1 w-full py-0.5 rounded-lg text-[8px] font-semibold transition-all cursor-pointer ${
+                          isPlaying
+                            ? 'bg-primary/20 text-primary'
+                            : 'bg-surface-container text-on-surface-variant hover:bg-primary/10 hover:text-primary'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[10px]" style={{ fontVariationSettings: isPlaying ? "'FILL' 1" : "'FILL' 0" }}>
+                          volume_up
+                        </span>
+                        {isPlaying ? '播放中' : '试听'}
+                      </button>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Carousel Pagination Bottom Controls block */}
+        {!loading && carouselPersonas.length > 0 && (
           <div className="flex flex-col items-center gap-2 shrink-0 w-full">
-            {/* Carousel Pagination Indicator Dots */}
             <div className="flex justify-center items-center gap-1.5">
-              {personas.map((persona) => (
+              {carouselPersonas.map((persona) => (
                 <button
                   key={persona.id}
                   onClick={() => onSelectTutor(persona.id)}
@@ -322,7 +387,6 @@ export default function GuideSelectView({
               ))}
             </div>
 
-            {/* Compact bottom selection confirm button */}
             <div className="animate-fade-in">
               <button
                 onClick={onConfirmSelection}

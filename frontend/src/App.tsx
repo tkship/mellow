@@ -1,16 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './contexts/AuthContext';
-import { listPersonas, type Persona } from './api/persona';
-import { sendChatMessage, getChatStream, getChatHistory, getQuickPhrases, type ChatMessage as ApiChatMessage } from './api/chat';
-import { getProfile, getProfileStats } from './api/profile';
-import type { ProfileStats } from './api/profile';
-import { getEmotions, getFacts, getSummary } from './api/memory';
+import { listPersonas, listCustomPersonas, getPersonaVoiceUrl, type Persona } from './api/persona';
+import { sendChatMessage, getChatStream, getChatHistory, getQuickPhrases, toggleMessageFavorite, deleteMessage, type ChatMessage as ApiChatMessage } from './api/chat';
+import { getProfile, getProfileStats, getPlan, setPlan as setPlanApi, completePlan } from './api/profile';
+import type { ProfileStats, WeeklyPlan } from './api/profile';
+import { getEmotions, getFacts, getSummary, getProactiveMessages } from './api/memory';
+import type { ProactiveMessage } from './api/memory';
 import type {
   ScreenId,
   MainTab,
   Message,
   PersonaDisplay,
   UserProfile,
+  ToastMessage,
 } from './types';
 import { PERSONA_DISPLAY_MAP, PERSONA_AVATAR_MAP } from './types';
 import LoginView from './components/LoginView';
@@ -23,10 +25,12 @@ import VoiceCallView from './components/VoiceCallView';
 import VocabularyView from './components/VocabularyView';
 import KnowledgeView from './components/KnowledgeView';
 import MistakesView from './components/MistakesView';
+import Toast from './components/Toast';
+import ConfirmDialog from './components/ConfirmDialog';
 
 // ===== Persona → Display 转换 =====
 
-function personaToDisplay(p: Persona): PersonaDisplay {
+function personaToDisplay(p: Persona, isCustom = false): PersonaDisplay {
   const display = PERSONA_DISPLAY_MAP[p.id] || { name: p.name, tagline: p.language_style?.tone || '' };
   const avatar = PERSONA_AVATAR_MAP[p.id] || '';
   return {
@@ -37,6 +41,7 @@ function personaToDisplay(p: Persona): PersonaDisplay {
     description: `${display.name} focuses on ${p.language_style?.tone || 'natural'} communication with a ${p.teaching_style?.approach || 'guided'} approach.`,
     tag: display.tag,
     avatar,
+    isCustom,
   };
 }
 
@@ -51,7 +56,7 @@ export default function App() {
 
   // 角色
   const [personas, setPersonas] = useState<PersonaDisplay[]>([]);
-  const [currentPersonaId, setCurrentPersonaId] = useState('girlfriend');
+  const [currentPersonaId, setCurrentPersonaId] = useState('preset_girlfriend');
   const [personasLoading, setPersonasLoading] = useState(false);
 
   // 聊天
@@ -65,11 +70,27 @@ export default function App() {
   // 学习数据
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<ProfileStats | null>(null);
+  const [plan, setPlanState] = useState<WeeklyPlan | null>(null);
 
   // 记忆数据
   const [emotions, setEmotions] = useState<any[]>([]);
   const [facts, setFacts] = useState<string[]>([]);
   const [memorySummary, setMemorySummary] = useState('');
+
+  // 主动消息
+  const [proactiveMessage, setProactiveMessage] = useState<ProactiveMessage | null>(null);
+  const [proactiveDismissed, setProactiveDismissed] = useState(false);
+
+  // 角色语音试听
+  const [playingPersonaId, setPlayingPersonaId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Toast
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const showToast = useCallback((text: string, type: 'success' | 'error' = 'success') => {
+    setToast({ text, type });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
 
   // 设置
   const [darkMode, setDarkMode] = useState(false);
@@ -85,14 +106,18 @@ export default function App() {
     }
   }, [darkMode]);
 
-  // 登录后加载角色列表
+  // 登录后加载角色列表（预设 + 自定义）
   useEffect(() => {
     if (isLoggedIn && personas.length === 0) {
       setPersonasLoading(true);
-      listPersonas()
-        .then((res) => {
-          const displays = res.personas.map(personaToDisplay);
-          setPersonas(displays);
+      Promise.all([
+        listPersonas(),
+        listCustomPersonas().catch(() => ({ personas: [] })),
+      ])
+        .then(([presetRes, customRes]) => {
+          const presetDisplays = presetRes.personas.map((p) => personaToDisplay(p, false));
+          const customDisplays = (customRes as { personas: Persona[] }).personas.map((p) => personaToDisplay(p, true));
+          setPersonas([...presetDisplays, ...customDisplays]);
           // 尝试加载开场白
           getQuickPhrases(currentPersonaId)
             .then((r) => setSuggestedPrompts(r.phrases))
@@ -119,6 +144,12 @@ export default function App() {
 
   const handleSelectTutor = useCallback((id: string) => {
     setCurrentPersonaId(id);
+    // 停止语音播放
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setPlayingPersonaId(null);
     // 加载开场白
     getQuickPhrases(id)
       .then((r) => setSuggestedPrompts(r.phrases))
@@ -127,12 +158,65 @@ export default function App() {
     setMessages([]);
     setHistoryCursor(null);
     setHasMoreHistory(false);
+    setProactiveDismissed(false);
     fetchHistory(id, null);
   }, []);
 
   const handleConfirmTutor = useCallback(() => {
     setActiveScreen('chat');
-  }, []);
+    // 进入聊天时加载主动消息
+    getProactiveMessages(currentPersonaId)
+      .then((res) => {
+        if (res.messages && res.messages.length > 0) {
+          setProactiveMessage(res.messages[0]);
+        } else {
+          setProactiveMessage(null);
+        }
+      })
+      .catch(() => setProactiveMessage(null));
+  }, [currentPersonaId]);
+
+  // ===== 语音试听 =====
+
+  const handlePlayVoice = useCallback((personaId: string) => {
+    // 如果正在播放同一个角色，停止播放
+    if (playingPersonaId === personaId) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      setPlayingPersonaId(null);
+      return;
+    }
+
+    // 停止之前的播放
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    const url = getPersonaVoiceUrl(personaId);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    setPlayingPersonaId(personaId);
+
+    audio.onended = () => {
+      setPlayingPersonaId(null);
+      audioRef.current = null;
+    };
+
+    audio.onerror = () => {
+      setPlayingPersonaId(null);
+      audioRef.current = null;
+      showToast('该角色暂无配音', 'error');
+    };
+
+    audio.play().catch(() => {
+      setPlayingPersonaId(null);
+      audioRef.current = null;
+      showToast('语音播放失败', 'error');
+    });
+  }, [playingPersonaId, showToast]);
 
   // ===== 历史消息加载 =====
 
@@ -168,6 +252,43 @@ export default function App() {
       fetchHistory(currentPersonaId, historyCursor);
     }
   }, [currentPersonaId, historyCursor]);
+
+  // ===== 消息收藏 =====
+
+  const handleToggleFavorite = useCallback(async (messageId: string) => {
+    // 乐观更新：立即切换收藏状态
+    const previousMessages = messages;
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId ? { ...m, isFavorite: !m.isFavorite } : m
+      )
+    );
+    try {
+      await toggleMessageFavorite(messageId, currentPersonaId);
+    } catch {
+      // 回滚
+      setMessages(previousMessages);
+      showToast('操作失败，请重试', 'error');
+    }
+  }, [messages, currentPersonaId, showToast]);
+
+  // ===== 消息删除 =====
+
+  const [deleteConfirmMessageId, setDeleteConfirmMessageId] = useState<string | null>(null);
+
+  const handleDeleteMessage = useCallback(async (messageId: string) => {
+    // 乐观更新：立即移除消息
+    const previousMessages = messages;
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    try {
+      await deleteMessage(messageId, currentPersonaId);
+      showToast('消息已删除');
+    } catch {
+      // 回滚
+      setMessages(previousMessages);
+      showToast('删除失败，请重试', 'error');
+    }
+  }, [messages, currentPersonaId, showToast]);
 
   // ===== 发送消息 =====
 
@@ -296,9 +417,31 @@ export default function App() {
     }
   }, [currentPersonaId, sessionId]);
 
+  // ===== 主动消息 =====
+
+  const handleDismissProactive = useCallback(() => {
+    setProactiveDismissed(true);
+    setProactiveMessage(null);
+  }, []);
+
+  const handleAcceptProactive = useCallback(() => {
+    if (!proactiveMessage) return;
+    // 将主动消息内容作为 AI 消息插入聊天
+    const aiMsg: Message = {
+      id: `proactive-${Date.now()}`,
+      sender: 'ai',
+      text: proactiveMessage.content,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setMessages((prev) => [...prev, aiMsg]);
+    setProactiveDismissed(true);
+    setProactiveMessage(null);
+  }, [proactiveMessage]);
+
   // ===== 学习数据加载 =====
 
   const loadLearnData = useCallback(async () => {
+    // 学习数据（stats/profile）独立于计划数据，计划加载失败不影响其他数据
     try {
       const [statsData, profileData] = await Promise.all([
         getProfileStats('month'),
@@ -316,6 +459,13 @@ export default function App() {
     } catch (err) {
       console.error('加载学习数据失败:', err);
     }
+    try {
+      const planRes = await getPlan();
+      setPlanState(planRes.plan);
+    } catch {
+      // 计划加载失败不影响其他学习数据
+      setPlanState(null);
+    }
   }, []);
 
   // 学习 tab 切过去时加载数据
@@ -324,6 +474,30 @@ export default function App() {
       loadLearnData();
     }
   }, [activeTab, isLoggedIn, loadLearnData]);
+
+  // ===== 学习计划操作 =====
+
+  const handleCompletePlan = useCallback(async () => {
+    try {
+      await completePlan();
+      showToast('任务已完成');
+      // 刷新计划数据
+      const planRes = await getPlan();
+      setPlanState(planRes.plan);
+    } catch {
+      showToast('完成操作失败', 'error');
+    }
+  }, [showToast]);
+
+  const handleSetPlan = useCallback(async (data: WeeklyPlan) => {
+    try {
+      const res = await setPlanApi(data);
+      setPlanState(res.plan);
+      showToast('学习计划已创建');
+    } catch {
+      showToast('创建计划失败', 'error');
+    }
+  }, [showToast]);
 
   // 记忆数据加载
   const loadMemoryData = useCallback(async () => {
@@ -350,6 +524,7 @@ export default function App() {
     setPersonas([]);
     setProfile(null);
     setStats(null);
+    setPlanState(null);
   }, [logout]);
 
   const currentDisplay = personas.find((p) => p.id === currentPersonaId) || {
@@ -422,10 +597,16 @@ export default function App() {
     );
   }
 
+  // ===== 判断是否显示主动消息横幅 =====
+  const showProactiveBanner = !proactiveDismissed && proactiveMessage !== null;
+
   // ===== Render =====
 
   return (
     <div className="min-h-screen bg-background">
+      {/* 全局 Toast */}
+      <Toast toast={toast} />
+
       {/* 登录 */}
       {activeScreen === 'login' && (
         <LoginView onLoginSuccess={() => { setActiveScreen('main'); setActiveTab('chat'); }} />
@@ -468,16 +649,40 @@ export default function App() {
               isWaitingForAi={isWaitingForAi}
               hasMoreHistory={hasMoreHistory}
               onLoadMoreHistory={handleLoadMoreHistory}
+              onToggleFavorite={handleToggleFavorite}
+              onDeleteMessage={(messageId: string) => setDeleteConfirmMessageId(messageId)}
+              proactiveMessage={showProactiveBanner ? proactiveMessage : null}
+              onDismissProactive={handleDismissProactive}
+              onAcceptProactive={handleAcceptProactive}
+              onShowToast={showToast}
             />
           </div>
         </div>
       )}
+
+      {/* 删除确认对话框 */}
+      <ConfirmDialog
+        visible={deleteConfirmMessageId !== null}
+        title="删除消息"
+        message="确定删除这条消息吗？此操作无法撤销。"
+        confirmLabel="删除"
+        cancelLabel="取消"
+        danger
+        onConfirm={() => {
+          if (deleteConfirmMessageId) {
+            handleDeleteMessage(deleteConfirmMessageId);
+            setDeleteConfirmMessageId(null);
+          }
+        }}
+        onCancel={() => setDeleteConfirmMessageId(null)}
+      />
 
       {/* 语音通话 */}
       {activeScreen === 'voiceCall' && (
         <VoiceCallView
           personaName={currentDisplay.name}
           onEndCall={() => setActiveScreen('chat')}
+          onShowToast={(text: string, type: 'success' | 'error' = 'success') => showToast(text, type)}
         />
       )}
 
@@ -507,6 +712,8 @@ export default function App() {
                 selectedId={currentPersonaId}
                 onSelectTutor={handleSelectTutor}
                 onConfirmSelection={handleConfirmTutor}
+                playingPersonaId={playingPersonaId}
+                onPlayVoice={handlePlayVoice}
               />
             )}
 
@@ -516,6 +723,9 @@ export default function App() {
                 stats={stats}
                 isLoading={!profile || !stats}
                 onRefresh={loadLearnData}
+                plan={plan}
+                onCompletePlan={handleCompletePlan}
+                onSetPlan={handleSetPlan}
               />
             )}
 

@@ -1,5 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { Message } from '../types';
+import type { ProactiveMessage } from '../api/memory';
+import type { ContextMenuItem } from './ContextMenu';
+import ContextMenu from './ContextMenu';
 
 interface ChatViewProps {
   personaName: string;
@@ -9,6 +12,12 @@ interface ChatViewProps {
   isWaitingForAi: boolean;
   hasMoreHistory: boolean;
   onLoadMoreHistory: () => void;
+  onToggleFavorite: (messageId: string) => void;
+  onDeleteMessage: (messageId: string) => void;
+  proactiveMessage: ProactiveMessage | null;
+  onDismissProactive: () => void;
+  onAcceptProactive: () => void;
+  onShowToast: (text: string, type?: 'success' | 'error') => void;
 }
 
 export default function ChatView({
@@ -19,9 +28,84 @@ export default function ChatView({
   isWaitingForAi,
   hasMoreHistory,
   onLoadMoreHistory,
+  onToggleFavorite,
+  onDeleteMessage,
+  proactiveMessage,
+  onDismissProactive,
+  onAcceptProactive,
+  onShowToast,
 }: ChatViewProps) {
   const [inputText, setInputText] = useState('');
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  // ContextMenu state
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    position: { x: number; y: number };
+    messageId: string;
+    isFavorite: boolean;
+  }>({ visible: false, position: { x: 0, y: 0 }, messageId: '', isFavorite: false });
+
+  // Long-press detection
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
+
+  const handleLongPressStart = useCallback((messageId: string, isFavorite: boolean, clientX: number, clientY: number) => {
+    longPressTriggered.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      setContextMenu({
+        visible: true,
+        position: { x: clientX, y: clientY },
+        messageId,
+        isFavorite,
+      });
+    }, 500);
+  }, []);
+
+  const handleLongPressEnd = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, messageId: string, isFavorite: boolean) => {
+    e.preventDefault();
+    setContextMenu({
+      visible: true,
+      position: { x: e.clientX, y: e.clientY },
+      messageId,
+      isFavorite,
+    });
+  }, []);
+
+  const contextMenuItems: ContextMenuItem[] = [
+    {
+      label: contextMenu.isFavorite ? '取消收藏' : '收藏',
+      icon: contextMenu.isFavorite ? 'star_off' : 'star',
+      onClick: () => onToggleFavorite(contextMenu.messageId),
+    },
+    {
+      label: '复制文字',
+      icon: 'content_copy',
+      onClick: () => {
+        const msg = messages.find((m) => m.id === contextMenu.messageId);
+        if (msg) {
+          navigator.clipboard.writeText(msg.text).then(
+            () => onShowToast('已复制'),
+            () => onShowToast('复制失败', 'error')
+          );
+        }
+      },
+    },
+    {
+      label: '删除',
+      icon: 'delete',
+      danger: true,
+      onClick: () => onDeleteMessage(contextMenu.messageId),
+    },
+  ];
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -42,6 +126,35 @@ export default function ChatView({
 
   return (
     <div className="flex flex-col h-full bg-background relative selection:bg-primary-container selection:text-on-primary-container">
+      {/* Proactive Message Banner */}
+      {proactiveMessage && (
+        <div className="sticky top-0 z-30 bg-primary/10 border-b border-primary/20 px-4 py-3 flex items-center gap-3 animate-fade-in">
+          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+            <span className="font-display font-bold text-xs text-primary">
+              {personaName[0]}
+            </span>
+          </div>
+          <div className="flex-grow min-w-0">
+            <p className="text-xs text-primary font-semibold mb-0.5">{personaName}</p>
+            <p className="text-sm text-on-surface truncate">{proactiveMessage.content}</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={onAcceptProactive}
+              className="px-3 py-1.5 bg-primary text-white rounded-full text-xs font-semibold hover:bg-primary/90 transition-colors cursor-pointer"
+            >
+              查看
+            </button>
+            <button
+              onClick={onDismissProactive}
+              className="px-3 py-1.5 bg-surface-container text-on-surface-variant rounded-full text-xs font-semibold hover:bg-surface-container-high transition-colors cursor-pointer"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex-grow overflow-y-auto scrollbar-none px-4 py-6 md:px-8 space-y-6 pb-[160px] max-w-3xl mx-auto w-full">
         <div className="flex flex-col gap-6">
           {/* Load more history button */}
@@ -65,15 +178,35 @@ export default function ChatView({
             const isUser = msg.sender === 'user';
             if (isUser) {
               return (
-                <div key={msg.id} className="flex items-end justify-end gap-3 animate-fade-in-up">
-                  <div className="max-w-[85%] bg-primary-container rounded-2xl rounded-tr-none p-4 shadow-[0_4px_15px_rgba(78,205,196,0.15)] text-on-primary-container">
+                <div
+                  key={msg.id}
+                  className="flex items-end justify-end gap-3 animate-fade-in-up"
+                  onTouchStart={(e) => handleLongPressStart(msg.id, msg.isFavorite || false, e.touches[0].clientX, e.touches[0].clientY)}
+                  onTouchEnd={handleLongPressEnd}
+                  onTouchMove={handleLongPressEnd}
+                  onContextMenu={(e) => handleContextMenu(e, msg.id, msg.isFavorite || false)}
+                >
+                  <div className="max-w-[85%] bg-primary-container rounded-2xl rounded-tr-none p-4 shadow-[0_4px_15px_rgba(78,205,196,0.15)] text-on-primary-container relative">
                     <p className="font-sans text-[15px] leading-relaxed whitespace-pre-line">{msg.text}</p>
+                    {msg.isFavorite && (
+                      <div className="mt-1.5 flex items-center justify-end gap-1 text-[11px] text-amber-500 font-semibold">
+                        <span className="material-symbols-outlined text-[14px]">star</span>
+                        已收藏
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             } else {
               return (
-                <div key={msg.id} className="flex items-start gap-3 animate-fade-in-up">
+                <div
+                  key={msg.id}
+                  className="flex items-start gap-3 animate-fade-in-up"
+                  onTouchStart={(e) => handleLongPressStart(msg.id, msg.isFavorite || false, e.touches[0].clientX, e.touches[0].clientY)}
+                  onTouchEnd={handleLongPressEnd}
+                  onTouchMove={handleLongPressEnd}
+                  onContextMenu={(e) => handleContextMenu(e, msg.id, msg.isFavorite || false)}
+                >
                   {/* AI Avatar */}
                   <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center shadow-sm border border-primary/10">
                     <span className="font-display font-bold text-sm text-primary">
@@ -105,7 +238,7 @@ export default function ChatView({
 
                     {/* Favorite indicator */}
                     {msg.isFavorite && (
-                      <div className="mt-2 flex items-center gap-1 text-[11px] text-amber-500 font-semibold">
+                      <div className="mt-1.5 flex items-center justify-end gap-1 text-[11px] text-amber-500 font-semibold">
                         <span className="material-symbols-outlined text-[14px]">star</span>
                         已收藏
                       </div>
@@ -135,6 +268,14 @@ export default function ChatView({
           <div ref={chatBottomRef} />
         </div>
       </div>
+
+      {/* Context Menu */}
+      <ContextMenu
+        visible={contextMenu.visible}
+        position={contextMenu.position}
+        items={contextMenuItems}
+        onClose={() => setContextMenu((prev) => ({ ...prev, visible: false }))}
+      />
 
       {/* Input Area Bottom Panel */}
       <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-background via-background/95 to-transparent pt-12 pb-6 px-4 z-40">

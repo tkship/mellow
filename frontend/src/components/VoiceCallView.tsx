@@ -3,9 +3,10 @@ import React, { useState, useEffect } from 'react';
 interface VoiceCallViewProps {
   personaName: string;
   onEndCall: () => void;
+  onShowToast: (text: string, type?: 'success' | 'error') => void;
 }
 
-export default function VoiceCallView({ personaName, onEndCall }: VoiceCallViewProps) {
+export default function VoiceCallView({ personaName, onEndCall, onShowToast }: VoiceCallViewProps) {
   const [seconds, setSeconds] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
 
@@ -62,7 +63,7 @@ export default function VoiceCallView({ personaName, onEndCall }: VoiceCallViewP
           {/* Mute Microphone Button */}
           <button
             onClick={() => {
-              alert('语音功能开发中');
+              onShowToast('语音功能开发中，下个版本上线', 'error');
             }}
             className="flex flex-col items-center gap-2 group cursor-pointer transition-transform duration-300 active:scale-95 hover:scale-105"
             title="语音功能开发中"
