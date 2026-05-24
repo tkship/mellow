@@ -48,9 +48,13 @@ export default function KnowledgeView({ onGoBack }: KnowledgeViewProps) {
     }
   }, [query]);
 
+  const handleSubmit = useCallback(() => {
+    mode === 'lookup' ? handleLookup() : handleSearch();
+  }, [mode, handleLookup, handleSearch]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      mode === 'lookup' ? handleLookup() : handleSearch();
+      handleSubmit();
     }
   };
 
@@ -83,11 +87,17 @@ export default function KnowledgeView({ onGoBack }: KnowledgeViewProps) {
               onKeyDown={handleKeyDown}
               className="w-full bg-surface-container-lowest border border-outline-variant rounded-xl py-2.5 pl-10 pr-4 text-sm text-on-surface placeholder:text-outline-variant focus:border-primary focus:ring-1 focus:ring-primary/25 focus:outline-none transition-all"
             />
+            <button
+              onClick={handleSubmit}
+              className="px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:brightness-105 active:scale-95 transition-all cursor-pointer"
+            >
+              搜索
+            </button>
           </div>
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => { setMode('lookup'); handleLookup(); }}
+            onClick={() => setMode('lookup')}
             className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
               mode === 'lookup'
                 ? 'bg-primary text-white shadow-sm'
@@ -97,7 +107,7 @@ export default function KnowledgeView({ onGoBack }: KnowledgeViewProps) {
             精确查词
           </button>
           <button
-            onClick={() => { setMode('search'); handleSearch(); }}
+            onClick={() => setMode('search')}
             className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
               mode === 'search'
                 ? 'bg-primary text-white shadow-sm'

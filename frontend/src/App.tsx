@@ -71,6 +71,7 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [plan, setPlanState] = useState<WeeklyPlan | null>(null);
+  const [learnError, setLearnError] = useState<string | null>(null);
 
   // 记忆数据
   const [emotions, setEmotions] = useState<any[]>([]);
@@ -441,12 +442,11 @@ export default function App() {
   // ===== 学习数据加载 =====
 
   const loadLearnData = useCallback(async () => {
-    // 学习数据（stats/profile）独立于计划数据，计划加载失败不影响其他数据
+    setLearnError(null);
+    // 顺序调用避免 SQLite 并发写锁冲突
     try {
-      const [statsData, profileData] = await Promise.all([
-        getProfileStats('month'),
-        getProfile(),
-      ]);
+      const statsData = await getProfileStats('month');
+      const profileData = await getProfile();
       setStats(statsData);
       setProfile({
         cefrLevel: profileData.cefr_level as any,
@@ -458,12 +458,12 @@ export default function App() {
       });
     } catch (err) {
       console.error('加载学习数据失败:', err);
+      setLearnError('加载学习数据失败，请检查网络后重试');
     }
     try {
       const planRes = await getPlan();
       setPlanState(planRes.plan);
     } catch {
-      // 计划加载失败不影响其他学习数据
       setPlanState(null);
     }
   }, []);
@@ -722,6 +722,7 @@ export default function App() {
                 profile={profile}
                 stats={stats}
                 isLoading={!profile || !stats}
+                learnError={learnError}
                 onRefresh={loadLearnData}
                 plan={plan}
                 onCompletePlan={handleCompletePlan}

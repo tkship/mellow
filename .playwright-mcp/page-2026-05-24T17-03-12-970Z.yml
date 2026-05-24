@@ -1,0 +1,14 @@
+- generic [ref=e34]:
+  - main [ref=e35]:
+    - main [ref=e86]:
+      - generic [ref=e129]: 加载中...
+  - contentinfo [ref=e44]:
+    - button "chat_bubble AI导师" [ref=e45] [cursor=pointer]:
+      - generic [ref=e46]: chat_bubble
+      - generic [ref=e47]: AI导师
+    - button "school 学习" [ref=e48] [cursor=pointer]:
+      - generic [ref=e49]: school
+      - generic [ref=e50]: 学习
+    - button "person 我的" [ref=e51] [cursor=pointer]:
+      - generic [ref=e52]: person
+      - generic [ref=e53]: 我的

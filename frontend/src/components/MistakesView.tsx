@@ -90,7 +90,7 @@ export default function MistakesView({ onGoBack }: MistakesViewProps) {
                 {/* 错误类型标签 */}
                 <div className="flex items-center gap-2 mb-3">
                   <span className="px-3 py-1 bg-error/10 text-error text-xs font-bold rounded-full">
-                    {errorTypeLabels[mistake.error_type] || mistake.error_type}
+                    {errorTypeLabels[mistake.mistake_type] || mistake.mistake_type}
                   </span>
                   {mistake.timestamp && (
                     <span className="text-xs text-on-surface-variant/60">
@@ -103,7 +103,7 @@ export default function MistakesView({ onGoBack }: MistakesViewProps) {
                 <div className="mb-3">
                   <p className="text-xs text-on-surface-variant/60 mb-1">错误词汇</p>
                   <p className="text-lg font-display font-bold text-error line-through decoration-error/30">
-                    {mistake.word}
+                    {mistake.word_or_rule}
                   </p>
                 </div>
 

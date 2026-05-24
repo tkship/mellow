@@ -1,0 +1,111 @@
+- generic [ref=e4]:
+  - main [ref=e5]:
+    - main [ref=e128]:
+      - generic [ref=e129]:
+        - generic [ref=e130]:
+          - generic [ref=e131]: F
+          - generic [ref=e132]:
+            - heading "freshone" [level=1] [ref=e133]
+            - paragraph [ref=e134]: 语言学习者
+        - generic [ref=e135]:
+          - generic [ref=e136]:
+            - generic [ref=e137]: menu_book
+            - generic [ref=e138]: "0"
+            - generic [ref=e139]: 词汇量
+          - generic [ref=e140]:
+            - generic [ref=e141]: local_fire_department
+            - generic [ref=e142]: "0"
+            - generic [ref=e143]: 连续天
+          - generic [ref=e144]:
+            - generic [ref=e145]: trending_up
+            - generic [ref=e146]: A1
+            - generic [ref=e147]: A1 基础
+        - generic [ref=e149]:
+          - generic [ref=e150]:
+            - generic [ref=e152]: person
+            - generic [ref=e153]:
+              - generic [ref=e154]: 小雅
+              - generic [ref=e155]: 温柔贴心，陪伴式学习
+          - button "切换角色 arrow_forward" [ref=e156] [cursor=pointer]:
+            - generic [ref=e157]: 切换角色
+            - generic [ref=e158]: arrow_forward
+        - generic [ref=e159]:
+          - generic [ref=e160]:
+            - button "menu_book 生词本 管理收藏的生词与短语 chevron_right" [ref=e161] [cursor=pointer]:
+              - generic [ref=e162]:
+                - generic [ref=e164]: menu_book
+                - generic [ref=e165]:
+                  - generic [ref=e166]: 生词本
+                  - generic [ref=e167]: 管理收藏的生词与短语
+              - generic [ref=e168]: chevron_right
+            - button "search 知识库查词 查询单词释义、例句与用法 chevron_right" [ref=e170] [cursor=pointer]:
+              - generic [ref=e171]:
+                - generic [ref=e173]: search
+                - generic [ref=e174]:
+                  - generic [ref=e175]: 知识库查词
+                  - generic [ref=e176]: 查询单词释义、例句与用法
+              - generic [ref=e177]: chevron_right
+            - button "assignment 错题本 回顾练习中的常见错误 chevron_right" [ref=e179] [cursor=pointer]:
+              - generic [ref=e180]:
+                - generic [ref=e182]: assignment
+                - generic [ref=e183]:
+                  - generic [ref=e184]: 错题本
+                  - generic [ref=e185]: 回顾练习中的常见错误
+              - generic [ref=e186]: chevron_right
+            - button "psychology 角色记忆 查看角色对你的了解与互动历史 chevron_right" [ref=e188] [cursor=pointer]:
+              - generic [ref=e189]:
+                - generic [ref=e191]: psychology
+                - generic [ref=e192]:
+                  - generic [ref=e193]: 角色记忆
+                  - generic [ref=e194]: 查看角色对你的了解与互动历史
+              - generic [ref=e195]: chevron_right
+            - button "settings 设置 账号安全与应用偏好设置 chevron_right" [ref=e197] [cursor=pointer]:
+              - generic [ref=e198]:
+                - generic [ref=e200]: settings
+                - generic [ref=e201]:
+                  - generic [ref=e202]: 设置
+                  - generic [ref=e203]: 账号安全与应用偏好设置
+              - generic [ref=e204]: chevron_right
+            - generic [ref=e206]:
+              - generic [ref=e207]:
+                - generic [ref=e209]: notifications
+                - generic [ref=e210]:
+                  - generic [ref=e211]: 消息通知 (Notifications)
+                  - generic [ref=e212]: 开启每日口语及复习提醒
+              - button [ref=e213] [cursor=pointer]
+            - generic [ref=e216]:
+              - generic [ref=e217]:
+                - generic [ref=e219]: language
+                - generic [ref=e220]:
+                  - generic [ref=e221]: 界面语言 (UI Language)
+                  - generic [ref=e222]: 设置系统的操作指导语言
+              - button "简体中文 expand_more" [ref=e224] [cursor=pointer]:
+                - generic [ref=e225]: 简体中文
+                - generic [ref=e226]: expand_more
+            - generic [ref=e228]:
+              - generic [ref=e229]:
+                - generic [ref=e231]: dark_mode
+                - generic [ref=e232]:
+                  - generic [ref=e233]: 夜间模式 (Night Mode)
+                  - generic [ref=e234]: 开启舒适深色界面，缓解眼部疲劳
+              - button [ref=e235] [cursor=pointer]
+            - button "info 关于 Mellow (About) 版本 v2.0 • 软件版权与隐私条款 chevron_right" [ref=e238] [cursor=pointer]:
+              - generic [ref=e239]:
+                - generic [ref=e241]: info
+                - generic [ref=e242]:
+                  - generic [ref=e243]: 关于 Mellow (About)
+                  - generic [ref=e244]: 版本 v2.0 • 软件版权与隐私条款
+              - generic [ref=e245]: chevron_right
+          - button "logout 退出登录 (Log Out)" [ref=e247] [cursor=pointer]:
+            - generic [ref=e248]: logout
+            - generic [ref=e249]: 退出登录 (Log Out)
+  - contentinfo [ref=e63]:
+    - button "chat_bubble AI导师" [ref=e64] [cursor=pointer]:
+      - generic [ref=e65]: chat_bubble
+      - generic [ref=e66]: AI导师
+    - button "school 学习" [ref=e67] [cursor=pointer]:
+      - generic [ref=e68]: school
+      - generic [ref=e69]: 学习
+    - button "person 我的" [ref=e70] [cursor=pointer]:
+      - generic [ref=e71]: person
+      - generic [ref=e72]: 我的

@@ -1,0 +1,28 @@
+- generic [ref=e6]:
+  - generic [ref=e7]:
+    - generic [ref=e8]: cloud
+    - heading "Mellow AI" [level=1] [ref=e9]
+  - generic [ref=e10]:
+    - heading "欢迎回来" [level=2] [ref=e11]
+    - paragraph [ref=e12]: 请登录以继续您的宁静之旅。
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - generic [ref=e15]: 用户名 / 账号
+      - generic [ref=e16]:
+        - generic: person
+        - textbox "用户名 / 账号" [ref=e17]:
+          - /placeholder: 请输入用户名
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - generic [ref=e20]: 密码
+        - button "忘记密码" [ref=e21]
+      - generic [ref=e22]:
+        - generic: lock
+        - textbox "密码" [ref=e23]:
+          - /placeholder: 请输入您的密码
+    - button "登录 arrow_forward" [ref=e25] [cursor=pointer]:
+      - generic [ref=e26]: 登录
+      - generic [ref=e27]: arrow_forward
+  - paragraph [ref=e29]:
+    - text: 还没有账号？
+    - button "新用户注册" [ref=e30]

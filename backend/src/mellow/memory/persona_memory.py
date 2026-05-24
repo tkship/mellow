@@ -106,8 +106,15 @@ class PersonaMemoryManager:
             parts.append(f"关键信息: {'; '.join(memory.key_facts[-5:])}")
 
         if memory.last_interaction:
-            hours_ago = (datetime.now(timezone.utc) - memory.last_interaction).total_seconds() / 3600
-            parts.append(f"上次互动: {hours_ago:.0f} 小时前")
+            try:
+                last = memory.last_interaction
+                if isinstance(last, str):
+                    from datetime import datetime as dt
+                    last = dt.fromisoformat(last.replace('Z', '+00:00'))
+                hours_ago = (datetime.now(timezone.utc) - last).total_seconds() / 3600
+                parts.append(f"上次互动: {hours_ago:.0f} 小时前")
+            except Exception:
+                pass  # skip if datetime arithmetic fails
 
         return "\n".join(parts) if parts else "这是你们的第一次对话。"
 
@@ -122,5 +129,11 @@ class PersonaMemoryManager:
         memory = await self.get_or_create(persona_id, user_id)
         if not memory.last_interaction:
             return False
-        elapsed = (datetime.now(timezone.utc) - memory.last_interaction).total_seconds() / 3600
-        return elapsed >= min_hours
+        try:
+            last = memory.last_interaction
+            if isinstance(last, str):
+                last = datetime.fromisoformat(last.replace("Z", "+00:00"))
+            elapsed = (datetime.now(timezone.utc) - last).total_seconds() / 3600
+            return elapsed >= min_hours
+        except Exception:
+            return False

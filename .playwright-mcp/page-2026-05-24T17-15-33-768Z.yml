@@ -1,0 +1,17 @@
+- generic [ref=e31]:
+  - main [ref=e32]:
+    - main [ref=e34]:
+      - generic [ref=e35]:
+        - heading "选择你的口语向导" [level=1] [ref=e36]
+        - paragraph [ref=e37]: 左右滑动卡片发现契合你的陪伴导师
+      - paragraph [ref=e40]: 暂无可用角色
+  - contentinfo [ref=e41]:
+    - button "chat_bubble AI导师" [ref=e42] [cursor=pointer]:
+      - generic [ref=e43]: chat_bubble
+      - generic [ref=e44]: AI导师
+    - button "school 学习" [ref=e45] [cursor=pointer]:
+      - generic [ref=e46]: school
+      - generic [ref=e47]: 学习
+    - button "person 我的" [ref=e48] [cursor=pointer]:
+      - generic [ref=e49]: person
+      - generic [ref=e50]: 我的

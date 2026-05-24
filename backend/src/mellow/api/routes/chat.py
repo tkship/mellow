@@ -8,11 +8,18 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from mellow.api.deps import get_container, get_current_user
+from mellow.api.deps import get_container, get_current_user, get_db_session
 from mellow.di import Container
 from mellow.exceptions import NotFoundError
 from mellow.memory.session_context import ChatMessage, SessionContextManager
 from mellow.providers.auth import UserInfo
+
+# 需要在使用时导入以避免循环依赖
+# from sqlalchemy.ext.asyncio import AsyncSession
+# from mellow.db.repos.profile_repo import SqlAlchemyLearningProfileRepository
+# from mellow.memory.learning_profile import LearningProfileManager
+# from mellow.db.repos.persona_memory_repo import SqlAlchemyPersonaMemoryRepository
+# from mellow.memory.persona_memory import PersonaMemoryManager
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
@@ -59,17 +66,26 @@ async def chat(
     req: ChatRequest,
     user: UserInfo = Depends(get_current_user),
     container: Container = Depends(get_container),
+    session = Depends(get_db_session),
 ):
     """同步对话 —— 返回完整回复。"""
     from mellow.agent.base import AgentContext
+    from mellow.db.repos.profile_repo import SqlAlchemyLearningProfileRepository
+    from mellow.memory.learning_profile import LearningProfileManager
+    from mellow.db.repos.persona_memory_repo import SqlAlchemyPersonaMemoryRepository
+    from mellow.memory.persona_memory import PersonaMemoryManager
 
     pm = await container.persona_manager()
     persona = pm.get_persona(req.persona_id)
     persona_name = persona.name if persona else "Mellow"
 
-    profile_mgr = await container.profile_manager()
+    # 使用请求级 session 避免 SQLite 写锁
+    profile_repo = SqlAlchemyLearningProfileRepository(session)
+    profile_mgr = LearningProfileManager(profile_repo)
     profile_summary = await profile_mgr.get_profile_summary(user.id)
-    memory_mgr = await container.memory_manager()
+
+    memory_repo = SqlAlchemyPersonaMemoryRepository(session)
+    memory_mgr = PersonaMemoryManager(memory_repo)
     memory_context = await memory_mgr.get_memory_context(
         persona_id=req.persona_id, user_id=user.id
     )
@@ -127,17 +143,25 @@ async def chat_stream(
     session_id: str = Query(""),
     user: UserInfo = Depends(get_current_user),
     container: Container = Depends(get_container),
+    session = Depends(get_db_session),
 ):
     """SSE 流式对话 —— 逐 token 推送。"""
     from mellow.agent.base import AgentContext
+    from mellow.db.repos.profile_repo import SqlAlchemyLearningProfileRepository
+    from mellow.memory.learning_profile import LearningProfileManager
+    from mellow.db.repos.persona_memory_repo import SqlAlchemyPersonaMemoryRepository
+    from mellow.memory.persona_memory import PersonaMemoryManager
 
     pm = await container.persona_manager()
     persona = pm.get_persona(persona_id)
     persona_name = persona.name if persona else "Mellow"
 
-    profile_mgr = await container.profile_manager()
+    profile_repo = SqlAlchemyLearningProfileRepository(session)
+    profile_mgr = LearningProfileManager(profile_repo)
     profile_summary = await profile_mgr.get_profile_summary(user.id)
-    memory_mgr = await container.memory_manager()
+
+    memory_repo = SqlAlchemyPersonaMemoryRepository(session)
+    memory_mgr = PersonaMemoryManager(memory_repo)
     memory_context = await memory_mgr.get_memory_context(
         persona_id=persona_id, user_id=user.id
     )
@@ -275,6 +299,7 @@ async def get_quick_phrases(
     persona_id: str,
     user: UserInfo = Depends(get_current_user),
     container: Container = Depends(get_container),
+    session = Depends(get_db_session),
 ) -> dict:
     """获取角色化的动态开场白（快捷短语）。
 
@@ -289,8 +314,11 @@ async def get_quick_phrases(
     # 尝试 LLM 动态生成
     try:
         from mellow.models import Message, MessageRole
+        from mellow.db.repos.profile_repo import SqlAlchemyLearningProfileRepository
+        from mellow.memory.learning_profile import LearningProfileManager
 
-        profile_mgr = await container.profile_manager()
+        profile_repo = SqlAlchemyLearningProfileRepository(session)
+        profile_mgr = LearningProfileManager(profile_repo)
         profile_summary = await profile_mgr.get_profile_summary(user.id)
 
         system_msg = Message(

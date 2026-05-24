@@ -12,6 +12,7 @@ interface LearnViewProps {
   plan: WeeklyPlan | null;
   onCompletePlan: () => Promise<void>;
   onSetPlan: (data: WeeklyPlan) => Promise<void>;
+  learnError?: string | null;
 }
 
 // ===== Chart Types =====
@@ -65,7 +66,7 @@ function mapCefrToChart(progress: CefrProgressItem[]): ChartDataPoint[] {
 
 // ===== Component =====
 
-export default function LearnView({ profile, stats, isLoading, onRefresh, plan, onCompletePlan, onSetPlan }: LearnViewProps) {
+export default function LearnView({ profile, stats, isLoading, onRefresh, plan, onCompletePlan, onSetPlan, learnError }: LearnViewProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   // Plan form state
@@ -137,6 +138,26 @@ export default function LearnView({ profile, stats, isLoading, onRefresh, plan, 
       setCompletingDay(null);
     }
   };
+
+  // ===== Error State =====
+
+  if (learnError && !profile) {
+    return (
+      <div className="bg-background text-on-background h-full overflow-y-auto pb-6">
+        <main className="max-w-7xl mx-auto px-4 py-8 md:px-8 flex flex-col items-center justify-center h-full">
+          <span className="material-symbols-outlined text-[48px] text-outline-variant mb-4">error</span>
+          <h2 className="font-display font-bold text-xl text-on-surface mb-2">数据加载失败</h2>
+          <p className="text-sm text-on-surface-variant mb-6">{learnError}</p>
+          <button
+            onClick={onRefresh}
+            className="px-6 py-2.5 bg-primary text-white rounded-full text-sm font-semibold hover:bg-primary/90 transition-colors cursor-pointer"
+          >
+            重新加载
+          </button>
+        </main>
+      </div>
+    );
+  }
 
   // ===== Loading State (Shimmer Skeleton) =====
 

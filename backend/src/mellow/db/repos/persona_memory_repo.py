@@ -75,7 +75,7 @@ def mem_to_row(memory: PersonaMemory, row: PersonaMemoryRow | None = None) -> Pe
 
     row.relationship_summary = memory.relationship_summary
     row.emotional_trajectory_json = json.dumps(
-        [m.model_dump() for m in memory.emotional_trajectory], ensure_ascii=False
+        [m.model_dump(mode='json') for m in memory.emotional_trajectory], ensure_ascii=False
     )
     row.key_facts_json = json.dumps(memory.key_facts, ensure_ascii=False)
     row.interaction_count = memory.interaction_count
@@ -92,14 +92,27 @@ def row_to_mem(row: PersonaMemoryRow) -> PersonaMemory:
     ]
     key_facts: list[str] = json.loads(row.key_facts_json or "[]")
 
+    # SQLite 不保留时区信息，读取后手动恢复 UTC
+    last_interaction = row.last_interaction
+    if last_interaction is not None and last_interaction.tzinfo is None:
+        last_interaction = last_interaction.replace(tzinfo=timezone.utc)
+
+    created_at = row.created_at
+    if created_at is not None and created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+
+    updated_at = row.updated_at if row.updated_at else row.created_at
+    if updated_at is not None and updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=timezone.utc)
+
     return PersonaMemory(
         persona_id=row.persona_id,
         user_id=row.user_id,
         relationship_summary=row.relationship_summary or "",
         emotional_trajectory=emotional_trajectory,
         key_facts=key_facts,
-        last_interaction=row.last_interaction,
+        last_interaction=last_interaction,
         interaction_count=row.interaction_count,
-        created_at=row.created_at,
-        updated_at=row.updated_at if row.updated_at else row.created_at,
+        created_at=created_at,
+        updated_at=updated_at,
     )

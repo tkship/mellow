@@ -17,12 +17,20 @@ from mellow.exceptions import AuthenticationError, ConflictError
 from mellow.providers.auth import AuthProvider, TokenPair, UserInfo
 
 
+# 模块级缓存的 engine 和 session factory
+_cached_engine = None
+_cached_session_factory = None
+
+
 def _default_session_factory():
-    """获取默认 session 工厂（延迟导入，避免循环依赖）。"""
-    from mellow.db.engine import get_session_factory, get_engine
-    settings = get_settings()
-    engine = get_engine(settings)
-    return get_session_factory(engine)
+    """获取一个新 AsyncSession（延迟导入，避免循环依赖）。"""
+    global _cached_engine, _cached_session_factory
+    if _cached_session_factory is None:
+        from mellow.db.engine import get_session_factory, get_engine
+        settings = get_settings()
+        _cached_engine = get_engine(settings)
+        _cached_session_factory = get_session_factory(_cached_engine)
+    return _cached_session_factory()
 
 
 class JWTAuthProvider(AuthProvider):

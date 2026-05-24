@@ -1,0 +1,55 @@
+- generic [ref=e31]:
+  - main [ref=e32]:
+    - main [ref=e101]:
+      - generic [ref=e102]:
+        - generic [ref=e103]:
+          - heading "学习大本营" [level=2] [ref=e104]
+          - paragraph [ref=e105]: Welcome back. Your mind is clear, ready to absorb new knowledge.
+        - button "refresh" [ref=e106] [cursor=pointer]:
+          - generic [ref=e107]: refresh
+      - generic [ref=e108]:
+        - generic [ref=e109]:
+          - generic [ref=e110]:
+            - generic [ref=e111]: 当前等级
+            - generic [ref=e113]: school
+          - generic [ref=e114]:
+            - generic [ref=e115]: A1
+            - paragraph [ref=e116]: Beginner. Laying down strong linguistic foundations.
+        - generic [ref=e117]:
+          - generic [ref=e118]:
+            - generic [ref=e119]: 词汇量
+            - generic [ref=e121]: library_books
+          - generic [ref=e122]:
+            - generic [ref=e123]: "0"
+            - paragraph [ref=e124]: "CEFR 等级: A1。词汇量: ~0 (已掌握: 0)。"
+        - generic [ref=e125]:
+          - generic [ref=e126]:
+            - generic [ref=e127]: 连续学习
+            - generic [ref=e129]: local_fire_department
+          - generic [ref=e130]:
+            - generic [ref=e131]: 0 Days
+            - paragraph [ref=e132]: You've checked in 0 times.
+      - generic [ref=e133]:
+        - generic [ref=e135]:
+          - heading "本周学习计划" [level=3] [ref=e136]
+          - paragraph [ref=e137]: 制定你的学习计划，稳步提升
+        - generic [ref=e138]:
+          - paragraph [ref=e139]: 暂无学习计划，制定一个开始吧
+          - button "创建学习计划" [ref=e140] [cursor=pointer]
+      - generic [ref=e141]:
+        - generic [ref=e143]:
+          - heading "学习进度表" [level=3] [ref=e144]
+          - paragraph [ref=e145]: Your journey over the last 7 days.
+        - generic [ref=e146]:
+          - img [ref=e148]
+          - generic [ref=e153]: Sun
+  - contentinfo [ref=e90]:
+    - button "chat_bubble AI导师" [ref=e91] [cursor=pointer]:
+      - generic [ref=e92]: chat_bubble
+      - generic [ref=e93]: AI导师
+    - button "school 学习" [ref=e94] [cursor=pointer]:
+      - generic [ref=e95]: school
+      - generic [ref=e96]: 学习
+    - button "person 我的" [ref=e97] [cursor=pointer]:
+      - generic [ref=e98]: person
+      - generic [ref=e99]: 我的

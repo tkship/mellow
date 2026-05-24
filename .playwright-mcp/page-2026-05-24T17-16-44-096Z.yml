@@ -1,0 +1,76 @@
+- generic [ref=e4]:
+  - main [ref=e5]:
+    - main [ref=e7]:
+      - generic [ref=e8]:
+        - heading "选择你的口语向导" [level=1] [ref=e9]
+        - paragraph [ref=e10]: 左右滑动卡片发现契合你的陪伴导师
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic:
+            - img "小雅"
+          - generic [ref=e13]:
+            - generic [ref=e14]:
+              - generic [ref=e15]:
+                - heading "小雅" [level=3] [ref=e16]
+                - generic [ref=e17]: VIRTUAL TEACHER
+                - generic [ref=e18]: 推荐
+              - paragraph [ref=e19]: 温柔贴心，陪伴式学习
+            - button "volume_up 试听声音" [ref=e20] [cursor=pointer]:
+              - generic [ref=e21]: volume_up
+              - generic [ref=e22]: 试听声音
+        - generic [ref=e23] [cursor=pointer]:
+          - generic:
+            - img "晚晴"
+          - generic [ref=e24]:
+            - generic [ref=e25]:
+              - generic [ref=e26]:
+                - heading "晚晴" [level=3] [ref=e27]
+                - generic [ref=e28]: VIRTUAL TEACHER
+              - paragraph [ref=e29]: 幽默风趣，快乐记单词
+            - button "volume_up 试听声音" [ref=e30]:
+              - generic [ref=e31]: volume_up
+              - generic [ref=e32]: 试听声音
+        - generic [ref=e33] [cursor=pointer]:
+          - generic:
+            - generic:
+              - generic: D
+          - generic [ref=e34]:
+            - generic [ref=e35]:
+              - generic [ref=e36]:
+                - heading "Dr. Chen" [level=3] [ref=e37]
+                - generic [ref=e38]: VIRTUAL TEACHER
+              - paragraph [ref=e39]: 学术严谨，专注语法与结构
+            - button "volume_up 试听声音" [ref=e40]:
+              - generic [ref=e41]: volume_up
+              - generic [ref=e42]: 试听声音
+        - generic [ref=e43] [cursor=pointer]:
+          - generic:
+            - img "知夏"
+          - generic [ref=e44]:
+            - generic [ref=e45]:
+              - generic [ref=e46]:
+                - heading "知夏" [level=3] [ref=e47]
+                - generic [ref=e48]: VIRTUAL TEACHER
+              - paragraph [ref=e49]: 轻松对聊，像同学一起学
+            - button "volume_up 试听声音" [ref=e50]:
+              - generic [ref=e51]: volume_up
+              - generic [ref=e52]: 试听声音
+      - generic [ref=e53]:
+        - generic [ref=e54]:
+          - button "切换至 小雅" [ref=e55] [cursor=pointer]
+          - button "切换至 晚晴" [ref=e56] [cursor=pointer]
+          - button "切换至 Dr. Chen" [ref=e57] [cursor=pointer]
+          - button "切换至 知夏" [ref=e58] [cursor=pointer]
+        - button "确 定 选 择 arrow_forward" [ref=e60] [cursor=pointer]:
+          - generic [ref=e61]: 确 定 选 择
+          - generic [ref=e62]: arrow_forward
+  - contentinfo [ref=e63]:
+    - button "chat_bubble AI导师" [ref=e64] [cursor=pointer]:
+      - generic [ref=e65]: chat_bubble
+      - generic [ref=e66]: AI导师
+    - button "school 学习" [ref=e67] [cursor=pointer]:
+      - generic [ref=e68]: school
+      - generic [ref=e69]: 学习
+    - button "person 我的" [ref=e70] [cursor=pointer]:
+      - generic [ref=e71]: person
+      - generic [ref=e72]: 我的

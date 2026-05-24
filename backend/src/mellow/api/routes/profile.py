@@ -42,10 +42,14 @@ class WeeklyPlanRequest(BaseModel):
 @router.get("")
 async def get_profile(
     user: UserInfo = Depends(get_current_user),
-    container: Container = Depends(get_container),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """获取学习画像。"""
-    pm = await container.profile_manager()
+    from mellow.db.repos.profile_repo import SqlAlchemyLearningProfileRepository
+    from mellow.memory.learning_profile import LearningProfileManager
+
+    repo = SqlAlchemyLearningProfileRepository(session)
+    pm = LearningProfileManager(repo)
     profile = await pm.get_or_create(user.id)
     summary = await pm.get_profile_summary(user.id)
     return {
@@ -62,10 +66,13 @@ async def get_profile(
 @router.get("/mistakes")
 async def get_mistakes(
     user: UserInfo = Depends(get_current_user),
-    container: Container = Depends(get_container),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """获取最近错误记录。"""
-    pm = await container.profile_manager()
+    from mellow.db.repos.profile_repo import SqlAlchemyLearningProfileRepository
+    from mellow.memory.learning_profile import LearningProfileManager
+    repo = SqlAlchemyLearningProfileRepository(session)
+    pm = LearningProfileManager(repo)
     mistakes = await pm.get_recent_mistakes(user.id, limit=20)
     return {"mistakes": [m.model_dump() for m in mistakes]}
 
@@ -74,10 +81,13 @@ async def get_mistakes(
 async def update_profile(
     req: ProfileUpdateRequest,
     user: UserInfo = Depends(get_current_user),
-    container: Container = Depends(get_container),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """更新学习画像。"""
-    pm = await container.profile_manager()
+    from mellow.db.repos.profile_repo import SqlAlchemyLearningProfileRepository
+    from mellow.memory.learning_profile import LearningProfileManager
+    repo = SqlAlchemyLearningProfileRepository(session)
+    pm = LearningProfileManager(repo)
 
     # Build update kwargs from non-None fields
     update_data = req.model_dump(exclude_unset=True)
@@ -101,10 +111,13 @@ async def update_profile(
 @router.get("/plan")
 async def get_plan(
     user: UserInfo = Depends(get_current_user),
-    container: Container = Depends(get_container),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """获取当前学习计划。"""
-    pm = await container.profile_manager()
+    from mellow.db.repos.profile_repo import SqlAlchemyLearningProfileRepository
+    from mellow.memory.learning_profile import LearningProfileManager
+    repo = SqlAlchemyLearningProfileRepository(session)
+    pm = LearningProfileManager(repo)
     profile = await pm.get_or_create(user.id)
 
     if profile.current_plan is None:
@@ -120,12 +133,15 @@ async def get_plan(
 async def set_plan(
     req: WeeklyPlanRequest,
     user: UserInfo = Depends(get_current_user),
-    container: Container = Depends(get_container),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """设置/更新学习计划。"""
     from mellow.memory.models import DailyPlan, WeeklyPlan
+    from mellow.db.repos.profile_repo import SqlAlchemyLearningProfileRepository
+    from mellow.memory.learning_profile import LearningProfileManager
 
-    pm = await container.profile_manager()
+    repo = SqlAlchemyLearningProfileRepository(session)
+    pm = LearningProfileManager(repo)
 
     days = [
         DailyPlan(
@@ -157,10 +173,14 @@ async def set_plan(
 @router.post("/plan/complete")
 async def complete_plan(
     user: UserInfo = Depends(get_current_user),
-    container: Container = Depends(get_container),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """完成当前学习计划。"""
-    pm = await container.profile_manager()
+    from mellow.db.repos.profile_repo import SqlAlchemyLearningProfileRepository
+    from mellow.memory.learning_profile import LearningProfileManager
+
+    repo = SqlAlchemyLearningProfileRepository(session)
+    pm = LearningProfileManager(repo)
     profile = await pm.get_or_create(user.id)
 
     if profile.current_plan is None:
@@ -178,7 +198,6 @@ async def complete_plan(
 @router.get("/stats")
 async def get_stats(
     user: UserInfo = Depends(get_current_user),
-    container: Container = Depends(get_container),
     session: AsyncSession = Depends(get_db_session),
     range: str = "month",
 ):
@@ -188,8 +207,12 @@ async def get_stats(
         range: 时间范围 — week, month, half_year
     """
     from mellow.db.repos.cefr_progress_repo import CefrProgressRepository
+    from mellow.db.repos.profile_repo import SqlAlchemyLearningProfileRepository
+    from mellow.memory.learning_profile import LearningProfileManager
 
-    pm = await container.profile_manager()
+    # 使用请求级 session，避免 SQLite 写锁冲突
+    profile_repo = SqlAlchemyLearningProfileRepository(session)
+    pm = LearningProfileManager(profile_repo)
     profile = await pm.get_or_create(user.id)
 
     # 获取 CEFR 历史进度

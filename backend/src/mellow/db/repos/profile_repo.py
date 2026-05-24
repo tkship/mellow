@@ -84,10 +84,10 @@ def profile_to_row(profile: LearningProfile, row: LearningProfileRow | None = No
     row.cefr_level = profile.cefr_level
     row.mastered_words_json = json.dumps(profile.mastered_words, ensure_ascii=False)
     row.weak_areas_json = json.dumps(profile.weak_areas, ensure_ascii=False)
-    row.mistake_log_json = json.dumps([m.model_dump() for m in profile.mistake_log], ensure_ascii=False)
+    row.mistake_log_json = json.dumps([m.model_dump(mode='json') for m in profile.mistake_log], ensure_ascii=False)
     row.completed_lessons_json = json.dumps(profile.completed_lessons, ensure_ascii=False)
     row.current_plan_json = profile.current_plan.model_dump_json() if profile.current_plan else None
-    row.plan_history_json = json.dumps([p.model_dump() for p in profile.plan_history], ensure_ascii=False)
+    row.plan_history_json = json.dumps([p.model_dump(mode='json') for p in profile.plan_history], ensure_ascii=False)
     row.updated_at = profile.updated_at
     return row
 
