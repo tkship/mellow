@@ -1,12 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import {
-  TutorId,
-  Message,
-  MainTab,
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from './contexts/AuthContext';
+import { listPersonas, type Persona } from './api/persona';
+import { sendChatMessage, getChatStream, getChatHistory, getQuickPhrases, type ChatMessage as ApiChatMessage } from './api/chat';
+import { getProfile, getProfileStats } from './api/profile';
+import type { ProfileStats } from './api/profile';
+import { getEmotions, getFacts, getSummary } from './api/memory';
+import type {
   ScreenId,
-  UserState,
-  TUTORS
+  MainTab,
+  Message,
+  PersonaDisplay,
+  UserProfile,
 } from './types';
+import { PERSONA_DISPLAY_MAP, PERSONA_AVATAR_MAP } from './types';
 import LoginView from './components/LoginView';
 import GuideSelectView from './components/GuideSelectView';
 import ChatView from './components/ChatView';
@@ -14,152 +20,348 @@ import LearnView from './components/LearnView';
 import ProfileView from './components/ProfileView';
 import SettingsView from './components/SettingsView';
 import VoiceCallView from './components/VoiceCallView';
+import VocabularyView from './components/VocabularyView';
+import KnowledgeView from './components/KnowledgeView';
+import MistakesView from './components/MistakesView';
 
-const INITIAL_MESSAGES_MAPPING: Record<TutorId, Message[]> = {
-  aura: [
-    {
-      id: 'aura_init',
-      sender: 'ai',
-      text: "Hello there! I'm Aura, your Mellow AI language guide. How can I help you clear your mind or build fluent speaking habits today?",
-      timestamp: 'Today 9:41 AM',
-      suggestedPrompts: ["Outline key points", "Suggest natural phrasing", "What is the cultural background?"]
-    }
-  ],
-  leo: [
-    {
-      id: 'leo_init',
-      sender: 'ai',
-      text: "Hello! I am Leo, your patient English tutor. Let's make learning very simple and fun! We can talk about foods, standard hobbies, or your morning.",
-      timestamp: 'Today 9:41 AM',
-      suggestedPrompts: ["Help me learn simple words", "Ask me a simple question", "Let's practice!"]
-    }
-  ],
-  chen: [
-    {
-      id: 'chen_init',
-      sender: 'ai',
-      text: "Welcome. This is Dr. Chen, your English grammatical and syntax Guide. How may I assist you with precise sentence analysis, lexical expansion, or lexical exercises today?",
-      timestamp: 'Today 9:41 AM',
-      suggestedPrompts: ["Analyze standard patterns", "Explain SVO structure", "Verify my expression"]
-    }
-  ]
-};
+// ===== Persona → Display 转换 =====
 
-const INITIAL_CHIPS_MAPPING: Record<TutorId, string[]> = {
-  aura: ["Outline key points", "Defind audience", "English culture trivia", "Correct my sentence"],
-  leo: ["Say that simply", "Let's discuss food", "Quick beginners tip", "What is 1,200 words equal to?"],
-  chen: ["Analyze syntax structure", "Formal verbs vocabulary", "Practice writing grammar rules", "Show academic samples"]
-};
+function personaToDisplay(p: Persona): PersonaDisplay {
+  const display = PERSONA_DISPLAY_MAP[p.id] || { name: p.name, tagline: p.language_style?.tone || '' };
+  const avatar = PERSONA_AVATAR_MAP[p.id] || '';
+  return {
+    id: p.id,
+    name: display.name,
+    role: p.role,
+    tagline: display.tagline || p.language_style?.tone || '',
+    description: `${display.name} focuses on ${p.language_style?.tone || 'natural'} communication with a ${p.teaching_style?.approach || 'guided'} approach.`,
+    tag: display.tag,
+    avatar,
+  };
+}
+
+// ===== App =====
 
 export default function App() {
-  const [user, setUser] = useState<UserState>({
-    username: 'Elena Rostova',
-    email: 'elena@mellow.ai',
-    isLoggedIn: false, // Start at login screen
-    level: 'B2',
-    streak: 30,
-    vocabCount: 1204,
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDY8CblACtq0jmq_2pHIOPIoPxWxlzl_Lakq_Omn5CJQfe7IOztNDDTVdX3rVrmof_NP7AlZBg9zhmpalLBRgcgQFfCyYhOjh7SvLSuaEu5wcf3PfTBkiaLdflB6t94bV3-SK1__haO5R10M-f02jAuV-7fP_Ym7Oe5Hfa4b6WojGt7dbP60Q0Eexn8lLTbIotzi4KphuP8ETCZOo3baR6KPxgMufW649ta8AI1JHT1SEyr_--LSwAfec7T0NywHRgaK_aVuyZ0Dg',
-    bio: 'Curious Mind & Language Enthusiast',
-    notifications: true,
-    language: '简体中文',
-    darkMode: false
-  });
+  const { user, isLoggedIn, isLoading: authLoading, logout } = useAuth();
 
+  // 路由
+  const [activeScreen, setActiveScreen] = useState<ScreenId>('login');
+  const [activeTab, setActiveTab] = useState<MainTab>('chat');
+
+  // 角色
+  const [personas, setPersonas] = useState<PersonaDisplay[]>([]);
+  const [currentPersonaId, setCurrentPersonaId] = useState('girlfriend');
+  const [personasLoading, setPersonasLoading] = useState(false);
+
+  // 聊天
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>([]);
+  const [isWaitingForAi, setIsWaitingForAi] = useState(false);
+  const [sessionId, setSessionId] = useState('');
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+
+  // 学习数据
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [stats, setStats] = useState<ProfileStats | null>(null);
+
+  // 记忆数据
+  const [emotions, setEmotions] = useState<any[]>([]);
+  const [facts, setFacts] = useState<string[]>([]);
+  const [memorySummary, setMemorySummary] = useState('');
+
+  // 设置
+  const [darkMode, setDarkMode] = useState(false);
+  const [language, setLanguage] = useState('简体中文');
+  const [notifications, setNotifications] = useState(true);
+
+  // 深色模式
   useEffect(() => {
-    if (user.darkMode) {
+    if (darkMode) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-  }, [user.darkMode]);
+  }, [darkMode]);
 
-  const [activeScreen, setActiveScreen] = useState<ScreenId>('login');
-  const [activeTab, setActiveTab] = useState<MainTab>('chat');
-  const [profileSection, setProfileSection] = useState<'main' | 'security'>('main');
-  const [currentTutorId, setCurrentTutorId] = useState<TutorId>('aura');
-  
-  // Dynamic messages history mapping
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES_MAPPING.aura);
-  const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>(INITIAL_CHIPS_MAPPING.aura);
-  const [isWaitingForAi, setIsWaitingForAi] = useState(false);
-
-  // Sync initial message context when changing tutors
-  const handleSelectTutor = (id: TutorId) => {
-    setCurrentTutorId(id);
-    setMessages(INITIAL_MESSAGES_MAPPING[id]);
-    setSuggestedPrompts(INITIAL_CHIPS_MAPPING[id]);
-  };
-
-  const handleSendMessage = async (newText: string) => {
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      sender: 'user',
-      text: newText,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    const updatedMessages = [...messages, userMsg];
-    setMessages(updatedMessages);
-    setIsWaitingForAi(true);
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tutorId: currentTutorId,
-          messages: updatedMessages.map((m) => ({ sender: m.sender, text: m.text }))
+  // 登录后加载角色列表
+  useEffect(() => {
+    if (isLoggedIn && personas.length === 0) {
+      setPersonasLoading(true);
+      listPersonas()
+        .then((res) => {
+          const displays = res.personas.map(personaToDisplay);
+          setPersonas(displays);
+          // 尝试加载开场白
+          getQuickPhrases(currentPersonaId)
+            .then((r) => setSuggestedPrompts(r.phrases))
+            .catch(() => {});
         })
-      });
+        .catch((err) => console.error('加载角色失败:', err))
+        .finally(() => setPersonasLoading(false));
+    }
+  }, [isLoggedIn]);
 
-      const data = await res.json();
-      if (res.ok) {
-        const aiMsg: Message = {
-          id: (Date.now() + 1).toString(),
-          sender: 'ai',
-          text: data.text,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          suggestedPrompts: data.suggestedPrompts
-        };
-        setMessages((prev) => [...prev, aiMsg]);
-        setSuggestedPrompts(data.suggestedPrompts || []);
-        // Incremental Gamification Word count bonus when speaking! It builds massive joy
-        setUser((prev) => {
-          const countBonus = Math.floor(Math.random() * 3) + 2;
-          return { ...prev, vocabCount: prev.vocabCount + countBonus };
-        });
+  // auth 状态变化
+  useEffect(() => {
+    if (!authLoading) {
+      if (isLoggedIn) {
+        setActiveScreen('main');
+        setActiveTab('chat');
       } else {
-        throw new Error(data.error || 'API Query Failed');
+        setActiveScreen('login');
       }
-    } catch (err: any) {
-      console.error(err);
-      // Fallback
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          sender: 'ai',
-          text: "Looks like my neural connection experienced a slight ripple. Let's try again in a bit! (Please verify GEMINI_API_KEY in secrets setup for true AI answers!)",
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
-      ]);
-    } finally {
-      setIsWaitingForAi(false);
+    }
+  }, [isLoggedIn, authLoading]);
+
+  // ===== 角色选择 =====
+
+  const handleSelectTutor = useCallback((id: string) => {
+    setCurrentPersonaId(id);
+    // 加载开场白
+    getQuickPhrases(id)
+      .then((r) => setSuggestedPrompts(r.phrases))
+      .catch(() => setSuggestedPrompts(['Hello!', 'How are you?', "Let's practice!"]));
+    // 加载聊天历史
+    setMessages([]);
+    setHistoryCursor(null);
+    setHasMoreHistory(false);
+    fetchHistory(id, null);
+  }, []);
+
+  const handleConfirmTutor = useCallback(() => {
+    setActiveScreen('chat');
+  }, []);
+
+  // ===== 历史消息加载 =====
+
+  const fetchHistory = async (personaId: string, cursor: string | null) => {
+    try {
+      const res = await getChatHistory(personaId, 20, cursor);
+      const historyMsgs: Message[] = res.messages
+        .reverse()
+        .map((m) => ({
+          id: m.id,
+          sender: m.role === 'user' ? 'user' : 'ai',
+          text: m.content,
+          timestamp: new Date(m.timestamp).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          isFavorite: m.is_favorite,
+        }));
+      if (cursor) {
+        setMessages((prev) => [...historyMsgs, ...prev]);
+      } else {
+        setMessages(historyMsgs);
+      }
+      setHistoryCursor(res.next_cursor);
+      setHasMoreHistory(!!res.next_cursor);
+    } catch (err) {
+      console.error('加载历史失败:', err);
     }
   };
 
-  const handleLoginSuccess = (loginInfo: Partial<UserState>) => {
-    setUser((prev) => ({ ...prev, ...loginInfo, isLoggedIn: true }));
-    setActiveScreen('main'); // Direct to main screen (which has the bottom tabs)
-    setActiveTab('chat');    // Landing page tab is character selection
+  const handleLoadMoreHistory = useCallback(() => {
+    if (historyCursor) {
+      fetchHistory(currentPersonaId, historyCursor);
+    }
+  }, [currentPersonaId, historyCursor]);
+
+  // ===== 发送消息 =====
+
+  const handleSendMessage = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+
+    const userMsg: Message = {
+      id: Date.now().toString(),
+      sender: 'user',
+      text: text.trim(),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
+    setIsWaitingForAi(true);
+
+    const newSessionId = sessionId || '';
+    let aiReply = '';
+    const aiMsgId = (Date.now() + 1).toString();
+
+    try {
+      await getChatStream(currentPersonaId, text.trim(), newSessionId, {
+        onToken: (token) => {
+          aiReply += token;
+          setMessages((prev) => {
+            const existing = prev.find((m) => m.id === aiMsgId);
+            if (existing) {
+              return prev.map((m) => (m.id === aiMsgId ? { ...m, text: aiReply } : m));
+            }
+            return [
+              ...prev,
+              {
+                id: aiMsgId,
+                sender: 'ai',
+                text: aiReply,
+                timestamp: new Date().toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+              },
+            ];
+          });
+        },
+        onDone: () => {
+          setIsWaitingForAi(false);
+          // 保存 session_id
+          if (!sessionId && newSessionId) {
+            setSessionId(newSessionId);
+          }
+        },
+        onError: (err) => {
+          console.error('SSE 错误:', err);
+          setIsWaitingForAi(false);
+          // Fallback to sync chat
+          sendChatMessage({
+            persona_id: currentPersonaId,
+            message: text.trim(),
+            session_id: newSessionId,
+          })
+            .then((res) => {
+              setMessages((prev) => [
+                ...prev.filter((m) => m.id !== aiMsgId),
+                {
+                  id: aiMsgId,
+                  sender: 'ai',
+                  text: res.reply,
+                  timestamp: new Date().toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }),
+                },
+              ]);
+            })
+            .catch(() => {
+              setMessages((prev) => [
+                ...prev.filter((m) => m.id !== aiMsgId),
+                {
+                  id: aiMsgId,
+                  sender: 'ai',
+                  text: '抱歉，我现在无法回复。请稍后再试。',
+                  timestamp: new Date().toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }),
+                },
+              ]);
+            });
+        },
+      });
+    } catch (err: any) {
+      // SSE 完全失败，直接用同步 API
+      try {
+        const res = await sendChatMessage({
+          persona_id: currentPersonaId,
+          message: text.trim(),
+          session_id: newSessionId,
+        });
+        setMessages((prev) => [
+          ...prev.filter((m) => m.id !== aiMsgId),
+          {
+            id: aiMsgId,
+            sender: 'ai',
+            text: res.reply,
+            timestamp: new Date().toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          },
+        ]);
+      } catch {
+        setMessages((prev) => [
+          ...prev.filter((m) => m.id !== aiMsgId),
+          {
+            id: aiMsgId,
+            sender: 'ai',
+            text: '抱歉，网络连接出现问题，请稍后再试。',
+            timestamp: new Date().toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          },
+        ]);
+      } finally {
+        setIsWaitingForAi(false);
+      }
+    }
+  }, [currentPersonaId, sessionId]);
+
+  // ===== 学习数据加载 =====
+
+  const loadLearnData = useCallback(async () => {
+    try {
+      const [statsData, profileData] = await Promise.all([
+        getProfileStats('month'),
+        getProfile(),
+      ]);
+      setStats(statsData);
+      setProfile({
+        cefrLevel: profileData.cefr_level as any,
+        vocabularySize: profileData.vocabulary_size,
+        weakAreas: profileData.weak_areas,
+        learningDays: statsData.learning_days,
+        streak: statsData.check_in_count,
+        summary: profileData.summary,
+      });
+    } catch (err) {
+      console.error('加载学习数据失败:', err);
+    }
+  }, []);
+
+  // 学习 tab 切过去时加载数据
+  useEffect(() => {
+    if (activeTab === 'learn' && isLoggedIn) {
+      loadLearnData();
+    }
+  }, [activeTab, isLoggedIn, loadLearnData]);
+
+  // 记忆数据加载
+  const loadMemoryData = useCallback(async () => {
+    try {
+      const [emotionRes, factRes, summaryRes] = await Promise.all([
+        getEmotions(currentPersonaId),
+        getFacts(currentPersonaId),
+        getSummary(currentPersonaId),
+      ]);
+      setEmotions(emotionRes.emotions);
+      setFacts(factRes.facts);
+      setMemorySummary(summaryRes.summary);
+    } catch (err) {
+      console.error('加载记忆数据失败:', err);
+    }
+  }, [currentPersonaId]);
+
+  // ===== 导航 =====
+
+  const handleLogout = useCallback(() => {
+    logout();
+    setActiveScreen('login');
+    setMessages([]);
+    setPersonas([]);
+    setProfile(null);
+    setStats(null);
+  }, [logout]);
+
+  const currentDisplay = personas.find((p) => p.id === currentPersonaId) || {
+    id: currentPersonaId,
+    name: PERSONA_DISPLAY_MAP[currentPersonaId]?.name || currentPersonaId,
+    role: '',
+    tagline: PERSONA_DISPLAY_MAP[currentPersonaId]?.tagline || '',
+    description: '',
+    avatar: PERSONA_AVATAR_MAP[currentPersonaId] || '',
   };
 
-  const handleConfirmTutor = () => {
-    setActiveScreen('chat'); // Go directly tofullscreen chat layout
-  };
-
-  const currentTutor = TUTORS[currentTutorId] || TUTORS.aura;
+  // ===== 底部 Tab =====
 
   const renderBottomTabs = () => {
     const isChatActive = activeTab === 'chat';
@@ -169,13 +371,9 @@ export default function App() {
     return (
       <footer className="sticky bottom-0 z-50 border-t px-6 h-16 shrink-0 flex items-center justify-around select-none shadow-[0_-4px_16px_rgba(0,0,0,0.02)] transition-colors duration-300 bg-white/90 border-primary/5 backdrop-blur-md text-outline/75">
         <button
-          onClick={() => {
-            setActiveTab('chat');
-          }}
+          onClick={() => setActiveTab('chat')}
           className={`flex flex-col items-center gap-1 cursor-pointer py-1 px-4 transition-all duration-300 ${
-            isChatActive
-              ? 'text-primary scale-105 font-semibold'
-              : 'text-outline/75 hover:text-primary/70'
+            isChatActive ? 'text-primary scale-105 font-semibold' : 'text-outline/75 hover:text-primary/70'
           }`}
         >
           <span className="material-symbols-outlined text-[23px]" style={{ fontVariationSettings: isChatActive ? "'FILL' 1" : "'FILL' 0" }}>
@@ -185,13 +383,9 @@ export default function App() {
         </button>
 
         <button
-          onClick={() => {
-            setActiveTab('learn');
-          }}
+          onClick={() => setActiveTab('learn')}
           className={`flex flex-col items-center gap-1 cursor-pointer py-1 px-4 transition-all duration-300 ${
-            isLearnActive
-              ? 'text-primary scale-105 font-semibold'
-              : 'text-outline/75 hover:text-primary/70'
+            isLearnActive ? 'text-primary scale-105 font-semibold' : 'text-outline/75 hover:text-primary/70'
           }`}
         >
           <span className="material-symbols-outlined text-[23px]" style={{ fontVariationSettings: isLearnActive ? "'FILL' 1" : "'FILL' 0" }}>
@@ -201,13 +395,9 @@ export default function App() {
         </button>
 
         <button
-          onClick={() => {
-            setActiveTab('profile');
-          }}
+          onClick={() => setActiveTab('profile')}
           className={`flex flex-col items-center gap-1 cursor-pointer py-1 px-4 transition-all duration-300 ${
-            isProfileActive
-              ? 'text-primary scale-105 font-semibold'
-              : 'text-outline/75 hover:text-primary/70'
+            isProfileActive ? 'text-primary scale-105 font-semibold' : 'text-outline/75 hover:text-primary/70'
           }`}
         >
           <span className="material-symbols-outlined text-[23px]" style={{ fontVariationSettings: isProfileActive ? "'FILL' 1" : "'FILL' 0" }}>
@@ -219,75 +409,138 @@ export default function App() {
     );
   };
 
+  // ===== Loading =====
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <span className="material-symbols-outlined text-primary text-[48px] animate-spin">progress_activity</span>
+          <p className="text-on-surface-variant font-sans text-sm">正在加载 Mellow...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== Render =====
+
   return (
     <div className="min-h-screen bg-background">
-      {/* 1. LOGIN / REGISTER VIEW */}
+      {/* 登录 */}
       {activeScreen === 'login' && (
-        <LoginView onLoginSuccess={handleLoginSuccess} />
+        <LoginView onLoginSuccess={() => { setActiveScreen('main'); setActiveTab('chat'); }} />
       )}
 
-      {/* 2. TUTOR GUIDE SELECTION */}
-      {activeScreen === 'guideSelect' && (
-        <GuideSelectView
-          selectedTutorId={currentTutorId}
-          onSelectTutor={handleSelectTutor}
-          onConfirmSelection={handleConfirmTutor}
-        />
+      {/* 全屏聊天 */}
+      {activeScreen === 'chat' && (
+        <div className="flex flex-col h-screen min-h-screen max-h-screen relative overflow-hidden bg-background animate-fade-in">
+          <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-primary/5 px-6 h-16 flex items-center justify-between shrink-0">
+            <button
+              onClick={() => { setActiveScreen('main'); setActiveTab('chat'); }}
+              className="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:bg-primary-container/15 rounded-full transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[20px]">arrow_back</span>
+            </button>
+            <div className="text-center flex items-center gap-2 justify-center">
+              <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary font-display font-bold text-sm">
+                {currentDisplay.name[0]}
+              </div>
+              <div className="text-left">
+                <h1 className="font-display font-semibold text-sm md:text-base text-on-surface leading-tight">{currentDisplay.name}</h1>
+                <span className="text-[9px] text-primary/75 font-semibold font-sans tracking-wide block">
+                  Online Language Partner
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => setActiveScreen('voiceCall')}
+              className="w-10 h-10 flex items-center justify-center text-primary bg-primary-container/10 hover:bg-primary-container/25 rounded-full transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[20px]">call</span>
+            </button>
+          </header>
+          <div className="flex-grow overflow-hidden relative">
+            <ChatView
+              personaName={currentDisplay.name}
+              messages={messages}
+              onSendMessage={handleSendMessage}
+              suggestedPrompts={suggestedPrompts}
+              isWaitingForAi={isWaitingForAi}
+              hasMoreHistory={hasMoreHistory}
+              onLoadMoreHistory={handleLoadMoreHistory}
+            />
+          </div>
+        </div>
       )}
 
-      {/* 3. SIMULATED VOICE CALL (IMMERSIVE INTERACTIVE STATE) */}
+      {/* 语音通话 */}
       {activeScreen === 'voiceCall' && (
         <VoiceCallView
-          currentTutor={currentTutor}
+          personaName={currentDisplay.name}
           onEndCall={() => setActiveScreen('chat')}
         />
       )}
 
-      {/* 4. SETTINGS SECTION */}
+      {/* 设置 */}
       {activeScreen === 'settings' && (
         <SettingsView
-          user={user}
-          onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
+          user={{ username: user?.username || '', level: profile?.cefrLevel || 'B2' }}
+          darkMode={darkMode}
+          language={language}
+          notifications={notifications}
+          onUpdateDarkMode={setDarkMode}
+          onUpdateLanguage={setLanguage}
+          onUpdateNotifications={setNotifications}
           onGoBack={() => setActiveScreen('main')}
-          onLogout={() => {
-            setUser((prev) => ({ ...prev, isLoggedIn: false }));
-            setActiveScreen('login');
-          }}
+          onLogout={handleLogout}
         />
       )}
 
-      {/* 5. MAIN HUB SCREEN */}
+      {/* 主 Hub */}
       {activeScreen === 'main' && (
         <div className="flex flex-col h-screen min-h-screen max-h-screen relative overflow-hidden bg-background">
-          {/* Nav Tab Content Canvas */}
           <main className="flex-grow overflow-hidden relative">
             {activeTab === 'chat' && (
               <GuideSelectView
-                selectedTutorId={currentTutorId}
+                personas={personas}
+                loading={personasLoading}
+                selectedId={currentPersonaId}
                 onSelectTutor={handleSelectTutor}
                 onConfirmSelection={handleConfirmTutor}
               />
             )}
-            
+
             {activeTab === 'learn' && (
               <LearnView
-                level={user.level}
-                vocabCount={user.vocabCount}
-                streak={user.streak}
+                profile={profile}
+                stats={stats}
+                isLoading={!profile || !stats}
+                onRefresh={loadLearnData}
               />
             )}
 
             {activeTab === 'profile' && (
               <ProfileView
                 user={user}
-                onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
-                currentSection={profileSection}
-                onSectionChange={setProfileSection}
-                onLogout={() => {
-                  setUser((prev) => ({ ...prev, isLoggedIn: false }));
-                  setProfileSection('main');
-                  setActiveScreen('login');
+                profile={profile}
+                personas={personas}
+                currentPersonaId={currentPersonaId}
+                onSelectPersona={handleSelectTutor}
+                onOpenVocabulary={() => setActiveScreen('vocabulary')}
+                onOpenKnowledge={() => setActiveScreen('knowledge')}
+                onOpenMistakes={() => setActiveScreen('mistakes')}
+                onOpenMemory={() => {
+                  loadMemoryData();
+                  setActiveScreen('memory');
                 }}
+                onOpenSettings={() => setActiveScreen('settings')}
+                onLogout={handleLogout}
+                darkMode={darkMode}
+                onUpdateDarkMode={setDarkMode}
+                language={language}
+                onUpdateLanguage={setLanguage}
+                notifications={notifications}
+                onUpdateNotifications={setNotifications}
               />
             )}
           </main>
@@ -295,64 +548,70 @@ export default function App() {
         </div>
       )}
 
-      {/* 6. FULLSCREEN CHAT WINDOW (NO BOTTOM FOOTER TABS) */}
-      {activeScreen === 'chat' && (
-        <div className="flex flex-col h-screen min-h-screen max-h-screen relative overflow-hidden bg-background animate-fade-in">
-          {/* Header specific to Chat, with BACK button and Call button */}
-          <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-primary/5 px-6 h-16 flex items-center justify-between shrink-0">
-            <div className="w-10">
-              {/* Back to main selector tab */}
-              <button
-                onClick={() => {
-                  setActiveScreen('main');
-                  setActiveTab('chat');
-                }}
-                title="返回角色选择"
-                className="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:bg-primary-container/15 rounded-full transition-colors cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[20px]">arrow_back</span>
-              </button>
-            </div>
-            
-            {/* Header Title with chosen tutor guide context */}
-            <div className="text-center flex items-center gap-2 justify-center">
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-primary/10 bg-surface shadow-sm shrink-0">
-                <img
-                  alt={currentTutor.name}
-                  className="w-full h-full object-cover"
-                  src={currentTutor.avatar}
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-              <div className="text-left">
-                <h1 className="font-display font-semibold text-sm md:text-base text-on-surface leading-tight">{currentTutor.name}</h1>
-                <span className="text-[9px] text-primary/75 font-semibold font-sans tracking-wide block">
-                  Online Language Partner
-                </span>
-              </div>
-            </div>
+      {/* 生词本 */}
+      {activeScreen === 'vocabulary' && (
+        <VocabularyView onGoBack={() => setActiveScreen('main')} />
+      )}
 
-            {/* Quick action: Launch Call inside Chat screen! */}
-            <button
-              onClick={() => setActiveScreen('voiceCall')}
-              title="拨打实时语音通话"
-              className="w-10 h-10 flex items-center justify-center text-primary bg-primary-container/10 hover:bg-primary-container/25 rounded-full transition-colors cursor-pointer animate-bounce-subtle shrink-0"
-            >
-              <span className="material-symbols-outlined text-[20px]">call</span>
+      {/* 知识库 */}
+      {activeScreen === 'knowledge' && (
+        <KnowledgeView onGoBack={() => setActiveScreen('main')} />
+      )}
+
+      {/* 错题本 */}
+      {activeScreen === 'mistakes' && (
+        <MistakesView onGoBack={() => setActiveScreen('main')} />
+      )}
+
+      {/* 记忆页面 */}
+      {activeScreen === 'memory' && (
+        <div className="bg-background text-on-background h-screen max-h-screen flex flex-col overflow-hidden">
+          <header className="w-full bg-white border-b border-primary/5 px-6 h-16 flex items-center justify-between shrink-0">
+            <button onClick={() => setActiveScreen('main')} className="w-10 h-10 flex items-center justify-center text-on-surface hover:bg-primary-container/10 rounded-full">
+              <span className="material-symbols-outlined">arrow_back</span>
             </button>
+            <h1 className="font-display font-medium text-headline-sm">角色记忆</h1>
+            <div className="w-10"></div>
           </header>
-
-          {/* Full Screen Chat Box wrapper */}
-          <div className="flex-grow overflow-hidden relative">
-            <ChatView
-              currentTutor={currentTutor}
-              messages={messages}
-              onSendMessage={handleSendMessage}
-              onStartVoiceCall={() => setActiveScreen('voiceCall')}
-              suggestedPrompts={suggestedPrompts}
-              isWaitingForAi={isWaitingForAi}
-            />
-          </div>
+          <main className="flex-grow overflow-y-auto p-6 space-y-6">
+            <section className="bg-white rounded-2xl p-5 shadow-sm">
+              <h2 className="font-display font-bold text-lg mb-3">记忆摘要</h2>
+              <p className="text-on-surface-variant text-sm leading-relaxed">{memorySummary || '暂无记忆摘要'}</p>
+            </section>
+            <section className="bg-white rounded-2xl p-5 shadow-sm">
+              <h2 className="font-display font-bold text-lg mb-3">关键认知</h2>
+              {facts.length > 0 ? (
+                <ul className="space-y-2">
+                  {facts.map((fact, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-on-surface-variant">
+                      <span className="text-primary mt-1">•</span>
+                      <span>{fact}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-on-surface-variant/60 text-sm">暂无关键认知</p>
+              )}
+            </section>
+            <section className="bg-white rounded-2xl p-5 shadow-sm">
+              <h2 className="font-display font-bold text-lg mb-3">情绪轨迹</h2>
+              {emotions.length > 0 ? (
+                <div className="space-y-3">
+                  {emotions.map((e, i) => (
+                    <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-surface-container-low">
+                      <span className="text-lg">{e.mood === 'happy' ? '😊' : e.mood === 'frustrated' ? '😤' : e.mood === 'tired' ? '😴' : e.mood === 'motivated' ? '💪' : '😐'}</span>
+                      <div>
+                        <p className="text-sm font-medium">{e.mood} ({Math.round(e.intensity * 100)}%)</p>
+                        <p className="text-xs text-on-surface-variant">{e.reason}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-on-surface-variant/60 text-sm">暂无情绪记录</p>
+              )}
+            </section>
+          </main>
         </div>
       )}
     </div>

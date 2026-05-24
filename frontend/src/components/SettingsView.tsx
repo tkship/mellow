@@ -1,27 +1,82 @@
 import React from 'react';
-import { UserState, CEFRGoal } from '../types';
+import { updateProfile } from '../api/profile';
 
 interface SettingsViewProps {
-  user: UserState;
-  onUpdateUser: (updatedFields: Partial<UserState>) => void;
+  user: { username: string; level: string };
+  darkMode: boolean;
+  language: string;
+  notifications: boolean;
+  onUpdateDarkMode: (v: boolean) => void;
+  onUpdateLanguage: (v: string) => void;
+  onUpdateNotifications: (v: boolean) => void;
   onGoBack: () => void;
   onLogout: () => void;
 }
 
+interface ToastMessage {
+  text: string;
+  type: 'success' | 'error';
+}
+
+const AVATAR_COLORS = [
+  'bg-blue-500', 'bg-emerald-500', 'bg-violet-500', 'bg-amber-500',
+  'bg-rose-500', 'bg-cyan-500', 'bg-fuchsia-500', 'bg-lime-500',
+];
+
+function getAvatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 export default function SettingsView({
   user,
-  onUpdateUser,
+  darkMode,
+  language,
+  notifications,
+  onUpdateDarkMode,
+  onUpdateLanguage,
+  onUpdateNotifications,
   onGoBack,
   onLogout,
 }: SettingsViewProps) {
   const [showGoalDropdown, setShowGoalDropdown] = React.useState(false);
   const [showLangDropdown, setShowLangDropdown] = React.useState(false);
+  const [toast, setToast] = React.useState<ToastMessage | null>(null);
 
-  const goalLevels: CEFRGoal[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setToast({ text, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const goalLevels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
   const languages = ['简体中文', 'English', 'Español', '日本語'];
+
+  const initial = user.username?.charAt(0)?.toUpperCase() || '?';
+  const avatarColor = getAvatarColor(user.username);
+
+  const handleCefrChange = async (level: string) => {
+    setShowGoalDropdown(false);
+    try {
+      await updateProfile({ cefr_level: level });
+      showToast('目标已更新');
+    } catch {
+      showToast('更新失败，请重试', 'error');
+    }
+  };
 
   return (
     <div className="bg-background text-on-background h-screen max-h-screen flex flex-col items-center overflow-hidden">
+      {/* Toast Notification Banner */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-fade-in flex items-center gap-2 px-4 py-2.5 rounded-full shadow-lg border text-xs font-semibold backdrop-blur-md transition-all whitespace-nowrap bg-surface-container-lowest border-primary/10">
+          <span className={`w-2 h-2 rounded-full ${toast.type === 'success' ? 'bg-primary animate-ping' : 'bg-error animate-ping'}`}></span>
+          <span className={`${toast.type === 'success' ? 'text-primary' : 'text-error'}`}>{toast.text}</span>
+        </div>
+      )}
+
       {/* Header and Back navigation */}
       <header className="w-full bg-white border-b border-primary/5 px-6 h-16 flex items-center justify-between shrink-0">
         <button
@@ -38,12 +93,9 @@ export default function SettingsView({
       <main className="w-full max-w-3xl px-4 py-8 md:px-8 space-y-6 flex-grow overflow-y-auto pb-12">
         {/* Profile Section Header */}
         <div className="flex items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-primary/5 hover:shadow-md transition-shadow duration-300">
-          <img
-            alt="User Avatar"
-            className="w-16 h-16 rounded-full object-cover shadow-sm"
-            src={user.avatar}
-            referrerPolicy="no-referrer"
-          />
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-sm ${avatarColor}`}>
+            {initial}
+          </div>
           <div>
             <h2 className="font-display font-bold text-headline-sm text-on-surface">{user.username}</h2>
             <p className="text-xs text-on-surface-variant font-sans">
@@ -64,14 +116,17 @@ export default function SettingsView({
             </div>
             {/* Toggle Switch */}
             <button
-              onClick={() => onUpdateUser({ notifications: !user.notifications })}
+              onClick={() => {
+                onUpdateNotifications(!notifications);
+                showToast(notifications ? '通知已关闭' : '通知已开启');
+              }}
               className={`w-12 h-6 rounded-full relative flex items-center px-1 cursor-pointer transition-colors duration-300 focus:outline-none ${
-                user.notifications ? 'bg-primary-container' : 'bg-outline-variant'
+                notifications ? 'bg-primary-container' : 'bg-outline-variant'
               }`}
             >
               <div
                 className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-300 ${
-                  user.notifications ? 'translate-x-6' : 'translate-x-0'
+                  notifications ? 'translate-x-6' : 'translate-x-0'
                 }`}
               />
             </button>
@@ -106,10 +161,7 @@ export default function SettingsView({
                 {goalLevels.map((lvl) => (
                   <button
                     key={lvl}
-                    onClick={() => {
-                      onUpdateUser({ level: lvl });
-                      setShowGoalDropdown(false);
-                    }}
+                    onClick={() => handleCefrChange(lvl)}
                     className={`p-2 rounded-lg text-xs font-bold font-sans hover:bg-primary hover:text-white transition-colors cursor-pointer ${
                       user.level === lvl ? 'bg-primary text-white' : 'bg-white text-on-surface-variant/80'
                     }`}
@@ -138,7 +190,7 @@ export default function SettingsView({
                   onClick={() => setShowLangDropdown(!showLangDropdown)}
                   className="px-3 py-1 bg-surface-container hover:bg-primary-container/20 transition-colors text-xs font-sans text-on-surface-variant rounded-md flex items-center gap-1 cursor-pointer"
                 >
-                  <span>{user.language}</span>
+                  <span>{language}</span>
                   <span className="material-symbols-outlined text-[14px]">expand_more</span>
                 </button>
               </div>
@@ -151,11 +203,12 @@ export default function SettingsView({
                   <button
                     key={lang}
                     onClick={() => {
-                      onUpdateUser({ language: lang });
+                      onUpdateLanguage(lang);
                       setShowLangDropdown(false);
+                      showToast(`已切换界面语言为：${lang}`);
                     }}
                     className={`px-3 py-1.5 rounded-lg text-xs hover:bg-primary hover:text-white transition-colors cursor-pointer ${
-                      user.language === lang ? 'bg-primary text-white' : 'bg-white text-on-surface-variant'
+                      language === lang ? 'bg-primary text-white' : 'bg-white text-on-surface-variant'
                     }`}
                   >
                     {lang}
@@ -168,7 +221,7 @@ export default function SettingsView({
           {/* Divider */}
           <div className="h-px w-full bg-primary/5 ml-14"></div>
 
-          {/* Item: Theme (Simulated) */}
+          {/* Item: Theme (Dark Mode) */}
           <div className="w-full flex items-center justify-between py-2.5">
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary">
@@ -178,10 +231,19 @@ export default function SettingsView({
             </div>
             {/* Toggle Switch */}
             <button
-              onClick={() => alert('已自动为您配置专属 Mint Lake 绿色眼保调色系统，静雅绝伦。')}
-              className="w-12 h-6 bg-primary-container rounded-full relative flex items-center px-1 cursor-pointer focus:outline-none"
+              onClick={() => {
+                onUpdateDarkMode(!darkMode);
+                showToast(darkMode ? '已切换至亮色模式' : '已切换至深色夜间模式');
+              }}
+              className={`w-12 h-6 rounded-full relative flex items-center px-1 cursor-pointer transition-colors duration-300 focus:outline-none ${
+                darkMode ? 'bg-primary-container' : 'bg-outline-variant'
+              }`}
             >
-              <div className="w-4 h-4 bg-white rounded-full shadow-sm transform translate-x-6"></div>
+              <div
+                className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-300 ${
+                  darkMode ? 'translate-x-6' : 'translate-x-0'
+                }`}
+              />
             </button>
           </div>
 
@@ -190,7 +252,7 @@ export default function SettingsView({
 
           {/* Item: Account Security */}
           <button
-            onClick={() => alert(`您当前登录用户名: ${user.username}\n密码状态: 已进行SSL高强度双向宁静加密，绝不丢失。`)}
+            onClick={() => alert('安全检查通过')}
             className="w-full flex items-center justify-between py-2.5 group cursor-pointer text-left"
           >
             <div className="flex items-center gap-4">
@@ -209,7 +271,7 @@ export default function SettingsView({
 
           {/* Item: About */}
           <button
-            onClick={() => alert('Mellow AI v8.2.0 • 聆天核儳\n致力于打造能让心灵和外语沟通瞬间静止的极简 AI 向导。')}
+            onClick={() => alert('Mellow AI v2.0.0 • 极简口语向导\n致力于打造让心灵和外语沟通瞬间沉浸的极简 AI 向导。')}
             className="w-full flex items-center justify-between py-2.5 group cursor-pointer text-left"
           >
             <div className="flex items-center gap-4">

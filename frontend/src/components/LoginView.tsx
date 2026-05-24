@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { UserState } from '../types';
+import { login, register } from '../api/auth';
+import { ApiError } from '../api/client';
 
 interface LoginViewProps {
-  onLoginSuccess: (user: Partial<UserState>) => void;
+  onLoginSuccess: () => void;
 }
 
 export default function LoginView({ onLoginSuccess }: LoginViewProps) {
@@ -10,23 +11,42 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password) {
-      setErrorMsg('请填写所有必填字段');
+
+    // Client-side validation
+    if (username.trim().length < 3) {
+      setErrorMsg('用户名至少需要 3 个字符');
+      return;
+    }
+    if (password.length < 6) {
+      setErrorMsg('密码至少需要 6 个字符');
       return;
     }
 
-    // Success response - simulate user info loading or creation
-    onLoginSuccess({
-      email: `${username}@mellow.com`,
-      username: username,
-      isLoggedIn: true,
-      streak: 30,
-      vocabCount: 1204,
-      level: 'B2',
-    });
+    setIsLoading(true);
+    setErrorMsg('');
+
+    try {
+      if (isRegisterMode) {
+        await register({ username: username.trim(), password });
+      } else {
+        await login({ username: username.trim(), password });
+      }
+      onLoginSuccess();
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        setErrorMsg(err.message || err.code || '请求失败，请稍后重试');
+      } else if (err instanceof Error) {
+        setErrorMsg(err.message);
+      } else {
+        setErrorMsg('未知错误，请稍后重试');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -122,11 +142,21 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
             <div className="pt-2">
               <button
-                className="w-full bg-primary-container text-on-primary-container font-label-lg py-3 rounded-full shadow-[0_4px_14px_rgba(78,205,196,0.3)] hover:shadow-[0_6px_20px_rgba(78,205,196,0.4)] hover:scale-[1.01] active:scale-[0.99] transition-all duration-300 flex items-center justify-center gap-1 cursor-pointer"
+                className="w-full bg-primary-container text-on-primary-container font-label-lg py-3 rounded-full shadow-[0_4px_14px_rgba(78,205,196,0.3)] hover:shadow-[0_6px_20px_rgba(78,205,196,0.4)] hover:scale-[1.01] active:scale-[0.99] transition-all duration-300 flex items-center justify-center gap-1 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-[0_4px_14px_rgba(78,205,196,0.3)]"
                 type="submit"
+                disabled={isLoading}
               >
-                <span>{isRegisterMode ? '立即注册' : '登录'}</span>
-                <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                {isLoading ? (
+                  <>
+                    <span>处理中...</span>
+                    <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{isRegisterMode ? '立即注册' : '登录'}</span>
+                    <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
