@@ -106,7 +106,7 @@ async def add_vocabulary(
         word=word,
         phonetic=word_data.phonetic,
         part_of_speech=word_data.part_of_speech,
-        definitions=word_data.added_at and word_data.definitions or word_data.definitions,
+        definitions=word_data.definitions,
         examples=word_data.examples,
         synonyms=word_data.synonyms,
         added_at=word_data.added_at,

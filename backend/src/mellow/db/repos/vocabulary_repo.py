@@ -65,6 +65,14 @@ class SqlAlchemyVocabularyRepository(VocabularyRepository):
                        examples: list[str], synonyms: list[str],
                        added_at: str) -> VocabularyEntryRow:
         word_lower = word.lower().strip()
+        # 将字符串 added_at 转为 datetime（兼容 isoformat 格式）
+        if added_at:
+            try:
+                added_at_dt = datetime.fromisoformat(added_at.replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                added_at_dt = datetime.now(timezone.utc)
+        else:
+            added_at_dt = datetime.now(timezone.utc)
         row = VocabularyEntryRow(
             user_id=user_id,
             word=word_lower,
@@ -73,7 +81,7 @@ class SqlAlchemyVocabularyRepository(VocabularyRepository):
             definitions_json=json.dumps(definitions, ensure_ascii=False),
             examples_json=json.dumps(examples, ensure_ascii=False),
             synonyms_json=json.dumps(synonyms, ensure_ascii=False),
-            added_at=added_at or datetime.now(timezone.utc).isoformat(),
+            added_at=added_at_dt,
         )
         self._session.add(row)
         try:

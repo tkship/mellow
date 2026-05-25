@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from mellow.api.deps import get_container, get_current_user
@@ -64,7 +64,7 @@ async def get_persona(
     pm = await container.persona_manager()
     persona = pm.get_persona(persona_id)
     if not persona:
-        return {"error": "角色不存在"}, 404
+        raise HTTPException(status_code=404, detail="角色不存在")
     return persona.model_dump()
 
 
@@ -81,7 +81,7 @@ async def get_persona_voice(
     pm = await container.persona_manager()
     persona = pm.get_persona(persona_id)
     if not persona:
-        return {"error": "角色不存在"}, 404
+        raise HTTPException(status_code=404, detail="角色不存在")
 
     # Sanitize inputs to prevent path traversal
     safe_id = _sanitize_filename(persona_id)
@@ -91,15 +91,15 @@ async def get_persona_voice(
         mp3_path = _VOICE_DEMO_DIR / f"{safe_name}_demo.mp3"
 
     if not mp3_path.exists():
-        return {
-            "error": "配音文件不存在",
-            "message": f"File not found: {persona.name} voice demo",
-        }, 404
+        raise HTTPException(
+            status_code=404,
+            detail=f"File not found: {persona.name} voice demo",
+        )
 
     # Ensure the resolved path is within _VOICE_DEMO_DIR
     resolved = mp3_path.resolve()
     if not str(resolved).startswith(str(_VOICE_DEMO_DIR.resolve())):
-        return {"error": "Invalid file path"}, 400
+        raise HTTPException(status_code=400, detail="Invalid file path")
 
     return FileResponse(
         resolved,
