@@ -15,6 +15,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Extract version from tag
+        id: version
+        run: |
+          # v0.2 → 0.2
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -35,15 +43,19 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Build frontend (production API)
+      - name: Build frontend
         working-directory: frontend
-        env:
-          VITE_API_BASE_URL: http://43.139.242.133:6763/api/v1
+        # VITE_API_BASE_URL 留空 = 相对路径 /api/v1（单进程部署，前后端同源）
         run: npm run build
 
       - name: Add Capacitor Android platform
         working-directory: frontend
-        run: npx cap add android
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          else
+            echo "Android platform already exists, skipping add"
+          fi
 
       - name: Sync web assets to Android
         working-directory: frontend
@@ -52,9 +64,8 @@ jobs:
       - name: Configure Android cleartext traffic
         working-directory: frontend/android/app/src/main
         run: |
-          # Ensure AndroidManifest.xml allows cleartext HTTP (backend is HTTP, not HTTPS)
+          # 确保允许 HTTP 明文请求（后端可能使用 HTTP）
           sed -i 's|android:usesCleartextTraffic="false"|android:usesCleartextTraffic="true"|g' AndroidManifest.xml
-          # Also add networkSecurityConfig if not already present
           if ! grep -q 'android:networkSecurityConfig' AndroidManifest.xml; then
             sed -i 's|android:usesCleartextTraffic="true"|android:usesCleartextTraffic="true" android:networkSecurityConfig="@xml/network_security_config"|' AndroidManifest.xml
           fi
@@ -63,7 +74,7 @@ jobs:
         working-directory: frontend/android/app/src/main
         run: |
           mkdir -p res/xml
-          cat > res/xml/network_security_config.xml << 'EOF'
+          cat > res/xml/network_security_config.xml << 'XMLEOF'
           <?xml version="1.0" encoding="utf-8"?>
           <network-security-config>
               <base-config cleartextTrafficPermitted="true">
@@ -72,25 +83,26 @@ jobs:
                   </trust-anchors>
               </base-config>
               <domain-config cleartextTrafficPermitted="true">
-                  <domain includeSubdomains="true">43.139.242.133</domain>
                   <domain includeSubdomains="true">localhost</domain>
+                  <domain includeSubdomains="true">10.0.2.2</domain>
               </domain-config>
           </network-security-config>
-          EOF
+          XMLEOF
 
       - name: Build debug APK
         working-directory: frontend/android
         run: ./gradlew assembleDebug
 
-      - name: Rename APK
+      - name: Rename APK with version
         run: |
+          VERSION="${{ steps.version.outputs.version }}"
           mv frontend/android/app/build/outputs/apk/debug/app-debug.apk \
-             frontend/android/app/build/outputs/apk/debug/mellow-v0.1.apk
+             "frontend/android/app/build/outputs/apk/debug/mellow-v${VERSION}.apk"
 
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: frontend/android/app/build/outputs/apk/debug/mellow-v0.1.apk
+          files: frontend/android/app/build/outputs/apk/debug/mellow-v*.apk
           generate_release_notes: true
           draft: false
         env:

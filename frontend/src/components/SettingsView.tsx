@@ -1,5 +1,6 @@
 import React from 'react';
 import { updateProfile } from '../api/profile';
+import { getApiKeys, updateApiKeys, type ApiKeyConfigResponse } from '../api/settings';
 
 interface SettingsViewProps {
   user: { username: string; level: string };
@@ -44,7 +45,59 @@ export default function SettingsView({
 }: SettingsViewProps) {
   const [showGoalDropdown, setShowGoalDropdown] = React.useState(false);
   const [showLangDropdown, setShowLangDropdown] = React.useState(false);
+  const [showKeyConfig, setShowKeyConfig] = React.useState(false);
   const [toast, setToast] = React.useState<ToastMessage | null>(null);
+
+  // API Key 配置状态
+  const [keyLoading, setKeyLoading] = React.useState(false);
+  const [keySaving, setKeySaving] = React.useState(false);
+  const [keyStatus, setKeyStatus] = React.useState<ApiKeyConfigResponse | null>(null);
+  const [keyForm, setKeyForm] = React.useState({
+    llm_api_key: '',
+    llm_base_url: '',
+    llm_model: '',
+    llm_fast_model: '',
+    embed_api_key: '',
+    embed_model: '',
+  });
+
+  // 展开 API Key 配置时加载当前配置
+  React.useEffect(() => {
+    if (showKeyConfig && !keyStatus && !keyLoading) {
+      setKeyLoading(true);
+      getApiKeys()
+        .then((data) => {
+          setKeyStatus(data);
+        })
+        .catch(() => {
+          showToast('加载配置失败', 'error');
+        })
+        .finally(() => setKeyLoading(false));
+    }
+  }, [showKeyConfig]);
+
+  const handleSaveKeys = async () => {
+    setKeySaving(true);
+    try {
+      // 只发送有值的字段（空字符串表示清除）
+      const updates: Record<string, string | number> = {};
+      if (keyForm.llm_api_key) updates.llm_api_key = keyForm.llm_api_key;
+      if (keyForm.llm_base_url) updates.llm_base_url = keyForm.llm_base_url;
+      if (keyForm.llm_model) updates.llm_model = keyForm.llm_model;
+      if (keyForm.llm_fast_model) updates.llm_fast_model = keyForm.llm_fast_model;
+      if (keyForm.embed_api_key) updates.embed_api_key = keyForm.embed_api_key;
+      if (keyForm.embed_model) updates.embed_model = keyForm.embed_model;
+
+      const result = await updateApiKeys(updates);
+      setKeyStatus(result);
+      setKeyForm({ llm_api_key: '', llm_base_url: '', llm_model: '', llm_fast_model: '', embed_api_key: '', embed_model: '' });
+      showToast('配置已保存并生效');
+    } catch {
+      showToast('保存配置失败，请重试', 'error');
+    } finally {
+      setKeySaving(false);
+    }
+  };
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToast({ text, type });
@@ -284,6 +337,90 @@ export default function SettingsView({
               chevron_right
             </span>
           </button>
+
+          {/* Divider */}
+          <div className="h-px w-full bg-primary/5 ml-14"></div>
+
+          {/* Item: API Key Configuration */}
+          <button
+            onClick={() => setShowKeyConfig(!showKeyConfig)}
+            className="w-full flex items-center justify-between py-2.5 group cursor-pointer text-left"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary group-hover:bg-primary-container/20 transition-colors">
+                <span className="material-symbols-outlined text-[20px]">key</span>
+              </div>
+              <span className="text-[15px] font-sans text-on-surface font-medium">API 密钥配置 (API Keys)</span>
+            </div>
+            <span className={`material-symbols-outlined text-on-surface-variant/50 group-hover:text-primary transition-all text-[20px] ${showKeyConfig ? 'rotate-90' : ''}`}>
+              chevron_right
+            </span>
+          </button>
+
+          {/* API Key Config Panel */}
+          {showKeyConfig && (
+            <div className="ml-14 mt-2 mb-2 space-y-3 animate-fade-in">
+              {keyLoading ? (
+                <div className="flex items-center gap-2 text-xs text-on-surface-variant py-2">
+                  <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                  加载中...
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs text-on-surface-variant font-sans mb-1">LLM API Key</label>
+                    <input
+                      type="password"
+                      value={keyForm.llm_api_key}
+                      onChange={(e) => setKeyForm({ ...keyForm, llm_api_key: e.target.value })}
+                      placeholder={keyStatus?.llm_api_key || '未配置'}
+                      className="w-full px-3 py-2 text-sm bg-surface-container-low border border-outline-variant/20 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary font-sans"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-on-surface-variant font-sans mb-1">LLM Base URL</label>
+                    <input
+                      type="text"
+                      value={keyForm.llm_base_url}
+                      onChange={(e) => setKeyForm({ ...keyForm, llm_base_url: e.target.value })}
+                      placeholder={keyStatus?.llm_base_url || 'https://api.openai.com/v1'}
+                      className="w-full px-3 py-2 text-sm bg-surface-container-low border border-outline-variant/20 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary font-sans"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-on-surface-variant font-sans mb-1">LLM Model</label>
+                    <input
+                      type="text"
+                      value={keyForm.llm_model}
+                      onChange={(e) => setKeyForm({ ...keyForm, llm_model: e.target.value })}
+                      placeholder={keyStatus?.llm_model || 'gpt-4o'}
+                      className="w-full px-3 py-2 text-sm bg-surface-container-low border border-outline-variant/20 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary font-sans"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-on-surface-variant font-sans mb-1">Embedding API Key</label>
+                    <input
+                      type="password"
+                      value={keyForm.embed_api_key}
+                      onChange={(e) => setKeyForm({ ...keyForm, embed_api_key: e.target.value })}
+                      placeholder={keyStatus?.embed_api_key || '未配置'}
+                      className="w-full px-3 py-2 text-sm bg-surface-container-low border border-outline-variant/20 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary font-sans"
+                    />
+                  </div>
+                  <button
+                    onClick={handleSaveKeys}
+                    disabled={keySaving}
+                    className="w-full py-2 bg-primary text-white rounded-lg text-sm font-sans font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {keySaving ? '保存中...' : '保存配置'}
+                  </button>
+                  <p className="text-[10px] text-on-surface-variant/60 font-sans">
+                    密钥仅保存在本机，不会上传至第三方。留空表示使用服务端默认值。
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Divider */}
           <div className="h-px w-full bg-primary/5 ml-14"></div>

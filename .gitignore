@@ -33,3 +33,9 @@ frontend/android/
 
 # Node
 node_modules/
+
+# 前端构建产物（由 build.sh 或 Docker 生成，不纳入版本控制）
+backend/static/
+
+# 用户配置文件（包含 API Key 等敏感信息，不纳入版本控制）
+data/user_keys.json

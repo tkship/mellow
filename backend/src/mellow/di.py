@@ -32,6 +32,27 @@ class Container:
     def settings(self) -> Settings:
         return self._settings
 
+    def reload_settings(self) -> None:
+        """从环境变量 + .env + user_keys.json 重新加载配置，并清除 Provider 缓存。
+
+        用户通过 App 修改 API Key 后调用此方法，使新 Key 立即生效。
+        数据库引擎和 Session 工厂不会被重建（它们不受 API Key 影响）。
+        """
+        from mellow.config import reload_settings
+        new_settings = reload_settings()
+        self._settings = new_settings
+        # 清除所有 Provider 缓存，下次调用时会使用新 settings 重建
+        # 但保留数据库相关的缓存（引擎和 session 工厂）
+        keys_to_preserve = {"db_engine", "session_factory"}
+        keys_to_clear = [k for k in list(self._cache.keys()) if k not in keys_to_preserve]
+        for k in keys_to_clear:
+            # 尝试关闭旧实例（如 httpx.AsyncClient）
+            old = self._cache.pop(k, None)
+            if hasattr(old, "close") and asyncio.iscoroutinefunction(old.close):
+                # 异步关闭需要后台调度，这里只能标记
+                import logging
+                logging.getLogger(__name__).debug("Provider %s 需要异步关闭，将在下次事件循环中处理", k)
+
     async def _lazy(self, key: str, factory):
         """惰性初始化并缓存实例。
 
