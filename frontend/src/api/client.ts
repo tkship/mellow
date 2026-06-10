@@ -8,7 +8,8 @@
  * - SSE 流式请求支持
  */
 
-const API_BASE = '/api/v1';
+// 开发环境使用相对路径（走 Vite proxy），移动端/生产环境使用完整 URL
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 // ===== Token 管理 =====
 
@@ -102,7 +103,18 @@ async function request<T>(
   const { params, ...fetchOptions } = options;
 
   // 构建 URL（含 query params）
-  const url = new URL(endpoint, window.location.origin);
+  // 移动端 WebView 中 window.location.origin 是 https://localhost，不能用相对路径
+  // 当 API_BASE 是完整 URL 时，直接用它作为 base；否则用 origin 拼接
+  let url: URL;
+  if (API_BASE.startsWith('http')) {
+    // 生产/移动端：API_BASE = "http://43.139.242.133:6763/api/v1"
+    // endpoint = "/api/v1/auth/me" → "http://43.139.242.133:6763/api/v1/auth/me"
+    url = new URL(endpoint, API_BASE);
+  } else {
+    // 开发环境：API_BASE = "/api/v1"，endpoint 已包含此前缀
+    // 用 window.location.origin 拼接相对路径，由 Vite proxy 转发
+    url = new URL(endpoint, window.location.origin);
+  }
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
@@ -215,7 +227,10 @@ export async function chatStreamSse(
   callbacks: SseCallbacks
 ): Promise<void> {
   const token = getAccessToken();
-  const url = new URL(`${API_BASE}/chat/stream`, window.location.origin);
+  // 移动端需要完整 URL，开发环境可用相对路径
+  const url = API_BASE.startsWith('http')
+    ? new URL(`${API_BASE}/chat/stream`)
+    : new URL(`${API_BASE}/chat/stream`, window.location.origin);
   url.searchParams.set('persona_id', personaId);
   url.searchParams.set('message', message);
   if (sessionId) {
